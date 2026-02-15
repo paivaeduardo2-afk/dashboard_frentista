@@ -159,19 +159,20 @@ export default function App() {
   const generateAIInsight = async () => {
     setGeneratingInsight(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+      // Usando process.env.API_KEY diretamente conforme diretrizes
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const topFrentista = chartDataByFrentista[0]?.name || 'N/A';
-      const summary = `Dashboard Posto: Receita R$ ${stats.totalRevenue.toFixed(2)}, Volume ${stats.totalLiters.toFixed(2)}L, Destaque ${topFrentista}.`;
+      const summary = `Dados operacionais: Receita R$ ${stats.totalRevenue.toFixed(2)}, Volume ${stats.totalLiters.toFixed(2)}L, Melhor Frentista: ${topFrentista}.`;
       
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Analise estes dados de um posto de combustíveis e dê um conselho curto e prático de gestão: ${summary}`
+        contents: `Com base nos dados deste posto de combustíveis, forneça um insight de gestão rápido e acionável: ${summary}`
       });
       
-      setAiInsight(response.text || 'Sem recomendações no momento.');
+      setAiInsight(response.text || 'Nenhuma recomendação disponível agora.');
     } catch (err) {
-      console.error(err);
-      setAiInsight('Falha na conexão com a IA.');
+      console.error('Erro na IA:', err);
+      setAiInsight('Falha ao processar análise inteligente.');
     } finally {
       setGeneratingInsight(false);
     }
@@ -182,7 +183,7 @@ export default function App() {
       <div className="flex h-screen w-full items-center justify-center bg-slate-50">
         <div className="flex flex-col items-center gap-4">
           <RefreshCcw size={48} className="animate-spin text-blue-600" />
-          <p className="font-bold text-slate-400 uppercase tracking-widest text-xs">Conectando ao Firebird...</p>
+          <p className="font-bold text-slate-400 uppercase tracking-widest text-xs">Sincronizando com Firebird...</p>
         </div>
       </div>
     );
@@ -208,7 +209,7 @@ export default function App() {
             className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 transition-all ${activeTab === 'dashboard' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
           >
             <LayoutDashboard size={20} />
-            <span className="text-sm font-semibold">Painel Geral</span>
+            <span className="text-sm font-semibold">Dashboard</span>
           </button>
           <button 
             onClick={() => setActiveTab('history')}
@@ -301,8 +302,8 @@ export default function App() {
             <>
               {/* Stats */}
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
-                <StatCard title="Receita Total" value={`R$ ${stats.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} icon={<TrendingUp />} color="blue" />
-                <StatCard title="Volume (Litros)" value={`${stats.totalLiters.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} L`} icon={<Fuel />} color="emerald" />
+                <StatCard title="Receita Bruta" value={`R$ ${stats.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} icon={<TrendingUp />} color="blue" />
+                <StatCard title="Vendas (Litros)" value={`${stats.totalLiters.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} L`} icon={<Fuel />} color="emerald" />
                 <StatCard title="Ticket Médio" value={`R$ ${(stats.totalRevenue / (stats.fuelingCount || 1)).toFixed(2)}`} icon={<ArrowUpRight />} color="amber" />
                 <StatCard title="Abastecimentos" value={stats.fuelingCount} icon={<RefreshCcw />} color="indigo" />
               </div>
@@ -315,19 +316,19 @@ export default function App() {
                       <div className="rounded-2xl bg-blue-600 p-3 shadow-lg">
                         <TrendingUp size={24} className="text-white" />
                       </div>
-                      <h3 className="text-2xl font-black tracking-tight">Conselheiro IA</h3>
+                      <h3 className="text-2xl font-black tracking-tight">Análise Inteligente</h3>
                     </div>
                     <p className="max-w-3xl text-sm font-medium leading-relaxed text-slate-400 italic">
-                      {generatingInsight ? 'Analisando tendências e métricas...' : (aiInsight || 'Clique no botão ao lado para analisar o desempenho do posto via Gemini AI.')}
+                      {generatingInsight ? 'Processando métricas e tendências...' : (aiInsight || 'Utilize o Gemini AI para analisar os dados filtrados e obter conselhos de gestão.')}
                     </p>
                   </div>
                   <button 
                     onClick={generateAIInsight}
                     disabled={generatingInsight}
-                    className="flex items-center gap-3 rounded-2xl bg-blue-600 px-8 py-4 text-sm font-black transition-all hover:bg-blue-500 disabled:opacity-50"
+                    className="flex items-center gap-3 rounded-2xl bg-blue-600 px-8 py-4 text-sm font-black transition-all hover:bg-blue-500 disabled:opacity-50 active:scale-95 shadow-xl shadow-blue-500/20"
                   >
                     {generatingInsight ? <RefreshCcw size={18} className="animate-spin" /> : <TrendingUp size={18} />}
-                    Gerar Análise
+                    Gerar Insight
                   </button>
                 </div>
                 <div className="absolute right-0 top-0 h-64 w-64 -translate-y-1/2 translate-x-1/2 rounded-full bg-blue-600/10 blur-3xl"></div>
@@ -336,7 +337,7 @@ export default function App() {
               {/* Charts */}
               <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
                 <div className="rounded-[2.5rem] border border-slate-100 bg-white p-8 shadow-sm">
-                  <h3 className="mb-6 text-lg font-black text-slate-800">Vendas por Frentista</h3>
+                  <h3 className="mb-6 text-lg font-black text-slate-800">Ranking Frentistas (R$)</h3>
                   <div className="h-80">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={chartDataByFrentista} layout="vertical">
@@ -351,7 +352,7 @@ export default function App() {
                 </div>
 
                 <div className="rounded-[2.5rem] border border-slate-100 bg-white p-8 shadow-sm">
-                  <h3 className="mb-6 text-lg font-black text-slate-800">Mix de Combustível</h3>
+                  <h3 className="mb-6 text-lg font-black text-slate-800">Participação de Produtos</h3>
                   <div className="h-80">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
@@ -374,12 +375,12 @@ export default function App() {
                 <table className="w-full text-left">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400">ID / Data</th>
-                      <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400">Frentista</th>
-                      <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400">Bico / Combustível</th>
+                      <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400">Transação</th>
+                      <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400">Operador</th>
+                      <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400">Bico / Produto</th>
                       <th className="px-6 py-4 text-right text-[10px] font-black uppercase text-slate-400">Volume</th>
-                      <th className="px-6 py-4 text-right text-[10px] font-black uppercase text-slate-400">Valor Total</th>
-                      <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400">Encerrante</th>
+                      <th className="px-6 py-4 text-right text-[10px] font-black uppercase text-slate-400">Total Venda</th>
+                      <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -387,7 +388,7 @@ export default function App() {
                       <tr key={i} className="hover:bg-slate-50 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap font-mono text-xs">
                            <div className="font-bold text-slate-800">{row.dt_caixa}</div>
-                           <div className="text-[10px] text-slate-400">Seq: {row.seq_caixa}</div>
+                           <div className="text-[10px] text-slate-400">ID: {row.seq_caixa}</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm font-black text-slate-700">{row.apelido}</div>
@@ -402,7 +403,10 @@ export default function App() {
                           <span className="rounded-lg bg-blue-50 px-2 py-1 text-xs font-black text-blue-700">R$ {row.total.toFixed(2)}</span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-[10px] font-mono text-slate-400">F: {row.enc_final.toFixed(2)}</div>
+                          <div className="flex items-center gap-1.5">
+                            <div className="h-1.5 w-1.5 rounded-full bg-emerald-500"></div>
+                            <span className="text-[10px] font-black uppercase text-slate-400">Registrado</span>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -415,24 +419,24 @@ export default function App() {
           {activeTab === 'settings' && (
             <div className="max-w-2xl rounded-[2.5rem] border border-slate-200 bg-white p-10 shadow-sm">
               <div className="mb-8 flex items-center gap-4">
-                <div className="rounded-2xl bg-blue-600 p-3">
+                <div className="rounded-2xl bg-blue-600 p-3 shadow-lg shadow-blue-500/20">
                   <Database size={24} className="text-white" />
                 </div>
-                <h3 className="text-xl font-black text-slate-800">Conexão Firebird</h3>
+                <h3 className="text-xl font-black text-slate-800">Conexão Firebird SQL</h3>
               </div>
               
               <div className="space-y-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Caminho do Banco (.FDB)</label>
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Caminho da Base de Dados (.FDB)</label>
                   <input type="text" value={dbConfig.path} readOnly className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-xs font-bold text-slate-500 cursor-not-allowed" />
                 </div>
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Servidor</label>
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Host / Servidor</label>
                     <input type="text" value={dbConfig.host} readOnly className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-xs font-bold text-slate-500 cursor-not-allowed" />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Porta</label>
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Porta TCP</label>
                     <input type="text" value={dbConfig.port} readOnly className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-xs font-bold text-slate-500 cursor-not-allowed" />
                   </div>
                 </div>
