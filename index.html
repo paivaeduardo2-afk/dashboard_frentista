@@ -1,24 +1,47 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Firebird Fuel Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Usando a versão de produção do CSS do Tailwind para evitar avisos JIT e garantir performance -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; }
+        /* Adicionando utilitários do Tailwind 3 que não estão na v2.2 CDN standard */
+        .rounded-3xl { border-radius: 1.5rem; }
+        .rounded-\[2\.5rem\] { border-radius: 2.5rem; }
+        .rounded-\[2rem\] { border-radius: 2rem; }
+        .bg-slate-900 { background-color: #0f172a; }
+        .bg-slate-800 { background-color: #1e293b; }
+        .bg-slate-800\/50 { background-color: rgba(30, 41, 59, 0.5); }
+        .bg-slate-50 { background-color: #f8fafc; }
+        .text-slate-900 { color: #0f172a; }
+        .text-slate-800 { color: #1e293b; }
+        .text-slate-700 { color: #334155; }
+        .text-slate-500 { color: #64748b; }
+        .text-slate-400 { color: #94a3b8; }
+        .text-slate-300 { color: #cbd5e1; }
+        .border-slate-800 { border-color: #1e293b; }
+        .border-slate-200 { border-color: #e2e8f0; }
+        .border-slate-100 { border-color: #f1f5f9; }
+        .ring-black\/5 { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05); }
+        .backdrop-blur-md { backdrop-filter: blur(12px); }
+        .backdrop-blur-xl { backdrop-filter: blur(24px); }
     </style>
-<script type="importmap">
+    <script type="importmap">
 {
   "imports": {
+    "react": "https://esm.sh/react@19.0.0",
+    "react-dom": "https://esm.sh/react-dom@19.0.0",
+    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
+    "recharts": "https://esm.sh/recharts@2.15.0?external=react,react-dom",
+    "lucide-react": "https://esm.sh/lucide-react@0.460.0?external=react,react-dom",
+    "@google/genai": "https://esm.sh/@google/genai@1.41.0",
     "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
-    "react/": "https://esm.sh/react@^19.2.4/",
-    "react": "https://esm.sh/react@^19.2.4",
-    "recharts": "https://esm.sh/recharts@^3.7.0",
-    "lucide-react": "https://esm.sh/lucide-react@^0.564.0",
-    "@google/genai": "https://esm.sh/@google/genai@^1.41.0"
+    "react/": "https://esm.sh/react@^19.2.4/"
   }
 }
 </script>
