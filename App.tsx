@@ -33,7 +33,7 @@ import {
   Legend
 } from 'recharts';
 import { getJoinedData, MOCK_FUNCIONARIOS } from './services/mockData';
-import { JoinData, DBConfig, DashboardStats } from './types';
+import { JoinData, DBConfig, DashboardStats, ChartDataItem, FuelChartItem } from './types';
 import { GoogleGenAI } from "@google/genai";
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
@@ -49,7 +49,7 @@ export default function App() {
     status: 'connected'
   });
 
-  // Filters
+  // Filtros Avançados
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 7);
@@ -64,18 +64,18 @@ export default function App() {
   const [generatingInsight, setGeneratingInsight] = useState(false);
 
   useEffect(() => {
-    // Simulating initial fetch
+    setLoading(true);
     setTimeout(() => {
       setData(getJoinedData());
       setLoading(false);
-    }, 1000);
+    }, 800);
   }, []);
 
   const filteredData = useMemo(() => {
     return data.filter(item => {
-      const itemDate = new Date(item.dt_caixa);
-      const start = startDate ? new Date(startDate) : null;
-      const end = endDate ? new Date(endDate) : null;
+      const itemDate = new Date(item.dt_caixa + 'T00:00:00');
+      const start = startDate ? new Date(startDate + 'T00:00:00') : null;
+      const end = endDate ? new Date(endDate + 'T23:59:59') : null;
       
       const matchDate = (!start || itemDate >= start) && (!end || itemDate <= end);
       const matchFrentista = !frentistaFilter || item.apelido === frentistaFilter;
@@ -96,31 +96,33 @@ export default function App() {
     };
   }, [filteredData]);
 
-  // Fix: Explicitly type the result of chartDataByFrentista to avoid 'unknown' element type errors
-  const chartDataByFrentista = useMemo(() => {
-    const grouped = filteredData.reduce((acc: Record<string, any>, curr) => {
-      if (!acc[curr.apelido]) acc[curr.apelido] = { name: curr.apelido, total: 0, litros: 0 };
+  const chartDataByFrentista = useMemo((): ChartDataItem[] => {
+    const grouped = filteredData.reduce((acc: Record<string, ChartDataItem>, curr) => {
+      if (!acc[curr.apelido]) {
+        acc[curr.apelido] = { name: curr.apelido, total: 0, litros: 0 };
+      }
       acc[curr.apelido].total += curr.total;
       acc[curr.apelido].litros += curr.litros;
       return acc;
-    }, {} as Record<string, any>);
-    return Object.values(grouped).sort((a: any, b: any) => b.total - a.total);
+    }, {});
+    return Object.values(grouped).sort((a, b) => b.total - a.total);
   }, [filteredData]);
 
-  // Fix: Explicitly type the result of chartDataByFuel for consistency
-  const chartDataByFuel = useMemo(() => {
-    const grouped = filteredData.reduce((acc: Record<string, any>, curr) => {
-      if (!acc[curr.tipo_combustivel]) acc[curr.tipo_combustivel] = { name: curr.tipo_combustivel, value: 0 };
+  const chartDataByFuel = useMemo((): FuelChartItem[] => {
+    const grouped = filteredData.reduce((acc: Record<string, FuelChartItem>, curr) => {
+      if (!acc[curr.tipo_combustivel]) {
+        acc[curr.tipo_combustivel] = { name: curr.tipo_combustivel, value: 0 };
+      }
       acc[curr.tipo_combustivel].value += curr.total;
       return acc;
-    }, {} as Record<string, any>);
+    }, {});
     return Object.values(grouped);
   }, [filteredData]);
 
   const exportToCSV = () => {
     const headers = [
-      'dt_caixa', 'seq_caixa', 'apelido', 'id_cartao_frentista', 
-      'cod_bico', 'preco', 'litros', 'total', 'enc_inicial', 'enc_final'
+      'Data Caixa', 'Sequencial', 'Frentista', 'ID Cartao', 
+      'Bico', 'Preco', 'Litros', 'Total', 'Enc. Inicial', 'Enc. Final'
     ];
     
     const rows = filteredData.map(d => [
@@ -129,301 +131,319 @@ export default function App() {
       d.apelido,
       d.id_cartao_frentista,
       d.cod_bico,
-      d.preco,
-      d.litros,
-      d.total,
-      d.enc_inicial,
-      d.enc_final
+      d.preco.toFixed(2),
+      d.litros.toFixed(3),
+      d.total.toFixed(2),
+      d.enc_inicial.toFixed(1),
+      d.enc_final.toFixed(1)
     ].map(val => (typeof val === 'string' ? `"${val.replace(/"/g, '""')}"` : val)));
 
-    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `vendas_frentistas_${startDate}_a_${endDate}.csv`);
+    link.setAttribute("download", `vendas_posto_${startDate}_a_${endDate}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
   const generateAIInsight = async () => {
+    if (!process.env.API_KEY) return;
     setGeneratingInsight(true);
     try {
-      // Fix: Use process.env.API_KEY directly in the named parameter object as per @google/genai rules
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      // Fix: Explicitly cast to any to resolve "Property 'name' does not exist on type 'unknown'" error on line 152
-      const topFrentista = (chartDataByFrentista[0] as any)?.name || 'N/A';
-      const summary = `Total faturado: ${stats.totalRevenue.toFixed(2)}, Litros: ${stats.totalLiters.toFixed(2)}, Melhor frentista: ${topFrentista}. Período: ${startDate} a ${endDate}.`;
-      const prompt = `Como um analista financeiro de postos de combustíveis, analise estes dados e sugira uma ação prática (em português, max 3 frases): ${summary}`;
+      const topFrentista = chartDataByFrentista[0]?.name || 'N/A';
+      const summary = `Dados: Faturamento R$ ${stats.totalRevenue.toFixed(2)}, Volume ${stats.totalLiters.toFixed(2)}L, Destaque: ${topFrentista}.`;
       
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: prompt
+        contents: `Analise estes dados de um posto e dê um conselho de gestão curto: ${summary}`
       });
-      // Fix: Use response.text property (not a function call) to get the generated text
-      setAiInsight(response.text || 'Nenhuma percepção disponível no momento.');
+      
+      setAiInsight(response.text || 'Sem recomendações no momento.');
     } catch (err) {
-      setAiInsight('Ocorreu um erro ao gerar os insights. Verifique a conexão.');
+      console.error(err);
+      setAiInsight('Erro ao conectar com a IA.');
     } finally {
       setGeneratingInsight(false);
     }
   };
 
+  if (loading && data.length === 0) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-4">
+          <RefreshCcw size={40} className="text-blue-600 animate-spin" />
+          <p className="text-gray-500 font-medium">Conectando ao banco Firebird...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 text-slate-900">
       {/* Sidebar */}
-      <aside className="w-64 bg-slate-900 text-white flex flex-col shadow-xl">
+      <aside className="w-64 bg-slate-900 text-white flex flex-col shadow-2xl">
         <div className="p-6 border-b border-slate-800 flex items-center gap-3">
-          <div className="bg-blue-600 p-2 rounded-lg">
+          <div className="bg-blue-600 p-2 rounded-lg shadow-inner">
             <Fuel size={24} />
           </div>
           <div>
-            <h1 className="font-bold text-lg tracking-tight">PostoPro</h1>
-            <p className="text-xs text-slate-400">Firebird Edition</p>
+            <h1 className="font-black text-lg tracking-tighter">PostoPro</h1>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Analytics Dashboard</p>
           </div>
         </div>
 
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 p-4 space-y-1">
           <button 
             onClick={() => setActiveTab('dashboard')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'dashboard' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'dashboard' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
           >
             <LayoutDashboard size={20} />
-            <span className="font-medium">Dashboard</span>
+            <span className="font-semibold text-sm">Painel de Vendas</span>
           </button>
           <button 
             onClick={() => setActiveTab('history')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'history' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'history' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
           >
             <Database size={20} />
-            <span className="font-medium">Abastecimentos</span>
+            <span className="font-semibold text-sm">Abastecimentos</span>
           </button>
           <button 
             onClick={() => setActiveTab('settings')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'settings' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'settings' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
           >
             <Settings size={20} />
-            <span className="font-medium">Configurações</span>
+            <span className="font-semibold text-sm">Banco de Dados</span>
           </button>
         </nav>
 
         <div className="p-4 border-t border-slate-800">
-          <div className="bg-slate-800/50 rounded-xl p-4 flex flex-col gap-2">
+          <div className="bg-slate-800/50 rounded-xl p-4 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-slate-400">Status do Banco</span>
-              <div className={`w-2 h-2 rounded-full ${dbConfig.status === 'connected' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Instalação Local</span>
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
             </div>
-            <p className="text-xs font-mono truncate text-slate-300">{dbConfig.path}</p>
+            <p className="text-[10px] font-mono truncate text-slate-400">...{dbConfig.path.slice(-25)}</p>
           </div>
         </div>
       </aside>
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto">
-        <header className="bg-white border-b border-gray-200 sticky top-0 z-10 px-8 py-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-gray-800">
-              {activeTab === 'dashboard' && 'Visão Geral'}
-              {activeTab === 'history' && 'Registros de Abastecimento'}
-              {activeTab === 'settings' && 'Configurações Firebird'}
+        <header className="bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-20 px-8 py-4 flex items-center justify-between">
+          <div className="flex flex-col">
+            <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
+              {activeTab === 'dashboard' && 'Visão Geral do Período'}
+              {activeTab === 'history' && 'Listagem de Abastecimentos'}
+              {activeTab === 'settings' && 'Configuração Firebird'}
             </h2>
-            <p className="text-sm text-gray-500">
-              {startDate} — {endDate} | {filteredData.length} registros
-            </p>
+            <div className="flex items-center gap-2 text-xs text-gray-400 font-medium">
+              <CalendarDays size={12} />
+              <span>{startDate} até {endDate}</span>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             <button 
               onClick={exportToCSV}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-semibold transition-colors shadow-sm"
+              className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-lg active:scale-95"
             >
-              <Download size={18} />
+              <Download size={14} />
               Exportar CSV
             </button>
             <div className="h-8 w-px bg-gray-200 mx-2"></div>
-            <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200">
-              <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm">S</div>
-              <span className="text-sm font-medium text-gray-700">sysdba</span>
+            <div className="flex items-center gap-3 bg-gray-100/50 pr-4 pl-1.5 py-1.5 rounded-full border border-gray-200">
+              <div className="w-8 h-8 rounded-full bg-blue-600 shadow-md flex items-center justify-center text-white font-black text-sm">S</div>
+              <div className="flex flex-col">
+                <span className="text-xs font-black text-slate-700 leading-none uppercase">sysdba</span>
+                <span className="text-[9px] font-bold text-slate-400">ADMIN</span>
+              </div>
             </div>
           </div>
         </header>
 
-        <div className="p-8 max-w-7xl mx-auto space-y-8">
+        <div className="p-8 max-w-7xl mx-auto space-y-8 pb-16">
+          {/* Advanced Filters */}
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-200/60 ring-1 ring-black/5">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="p-2 bg-blue-50 rounded-lg">
+                <Filter size={18} className="text-blue-600" />
+              </div>
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Controles de Filtragem</h3>
+            </div>
+            <div className="flex flex-wrap gap-6 items-end">
+              <div className="space-y-1.5 flex-1 min-w-[160px]">
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Data Início</label>
+                <div className="relative group">
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 group-hover:text-blue-500 transition-colors" size={16} />
+                  <input 
+                    type="date" 
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5 flex-1 min-w-[160px]">
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Data Fim</label>
+                <div className="relative group">
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 group-hover:text-blue-500 transition-colors" size={16} />
+                  <input 
+                    type="date" 
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5 flex-1 min-w-[160px]">
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Frentista</label>
+                <div className="relative group">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+                  <select 
+                    value={frentistaFilter}
+                    onChange={(e) => setFrentistaFilter(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500/20 outline-none appearance-none cursor-pointer"
+                  >
+                    <option value="">Todos</option>
+                    {MOCK_FUNCIONARIOS.map(f => <option key={f.id_cartao_abast} value={f.apelido}>{f.apelido}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1.5 w-32">
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Bico</label>
+                <div className="relative group">
+                  <Fuel className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+                  <select 
+                    value={bicoFilter}
+                    onChange={(e) => setBicoFilter(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500/20 outline-none appearance-none"
+                  >
+                    <option value="">Todos</option>
+                    {['01', '02', '03', '04', '05', '06'].map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </div>
+              </div>
+              <button 
+                onClick={() => {
+                  setStartDate('');
+                  setEndDate('');
+                  setFrentistaFilter('');
+                  setBicoFilter('');
+                }}
+                className="px-6 py-2.5 text-xs font-black text-slate-400 hover:text-red-500 uppercase tracking-widest transition-all"
+              >
+                Limpar
+              </button>
+            </div>
+          </div>
+
           {activeTab === 'dashboard' && (
             <>
               {/* Stats Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard 
-                  title="Faturamento Total" 
+                  title="Receita Líquida" 
                   value={`R$ ${stats.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} 
                   icon={<TrendingUp className="text-blue-600" />}
-                  trend="+12.5%"
+                  trend="+8.2%"
                   positive={true}
                 />
                 <StatCard 
-                  title="Litros Vendidos" 
+                  title="Volume Total" 
                   value={`${stats.totalLiters.toLocaleString('pt-BR', { minimumFractionDigits: 1 })} L`} 
                   icon={<Fuel className="text-emerald-600" />}
-                  trend="+5.2%"
+                  trend="+14.1%"
                   positive={true}
                 />
                 <StatCard 
                   title="Ticket Médio" 
                   value={`R$ ${(stats.totalRevenue / (stats.fuelingCount || 1)).toFixed(2)}`} 
-                  icon={<TrendingUp className="text-amber-600" />}
-                  trend="-2.1%"
+                  icon={<ArrowUpRight className="text-amber-600" />}
+                  trend="-1.5%"
                   positive={false}
                 />
                 <StatCard 
-                  title="Abastecimentos" 
+                  title="Qtd. Abastecimentos" 
                   value={stats.fuelingCount} 
-                  icon={<ChevronRight className="text-purple-600" />}
-                  trend="Consistente"
+                  icon={<RefreshCcw className="text-indigo-600" />}
+                  trend="Estável"
                   positive={true}
                 />
               </div>
 
-              {/* Advanced Filter Component */}
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-                <div className="flex items-center gap-2 mb-4">
-                  <Filter size={18} className="text-blue-600" />
-                  <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Filtros Avançados</h3>
-                </div>
-                <div className="flex flex-wrap gap-6 items-end">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase">Período de Início</label>
-                    <div className="relative">
-                      <CalendarDays className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                      <input 
-                        type="date" 
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-44"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase">Período de Fim</label>
-                    <div className="relative">
-                      <CalendarDays className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                      <input 
-                        type="date" 
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-44"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase">Frentista</label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                      <select 
-                        value={frentistaFilter}
-                        onChange={(e) => setFrentistaFilter(e.target.value)}
-                        className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-44 appearance-none"
-                      >
-                        <option value="">Todos os Frentistas</option>
-                        {MOCK_FUNCIONARIOS.map(f => <option key={f.id_cartao_abast} value={f.apelido}>{f.apelido}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase">Bico</label>
-                    <div className="relative">
-                      <Fuel className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                      <select 
-                        value={bicoFilter}
-                        onChange={(e) => setBicoFilter(e.target.value)}
-                        className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-32 appearance-none"
-                      >
-                        <option value="">Todos</option>
-                        {['01', '02', '03', '04', '05', '06'].map(b => <option key={b} value={b}>{b}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => {
-                      const sevenDaysAgo = new Date();
-                      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-                      setStartDate(sevenDaysAgo.toISOString().split('T')[0]);
-                      setEndDate(new Date().toISOString().split('T')[0]);
-                      setFrentistaFilter('');
-                      setBicoFilter('');
-                    }}
-                    className="px-4 py-2 text-sm text-gray-400 hover:text-blue-600 font-medium transition-colors border border-transparent hover:border-blue-100 rounded-lg"
-                  >
-                    Resetar Filtros
-                  </button>
-                </div>
-              </div>
-
-              {/* AI Insight Box */}
-              <div className="bg-slate-900 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
-                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+              {/* AI Insight Section */}
+              <div className="bg-slate-900 rounded-[2rem] p-8 text-white shadow-2xl relative overflow-hidden group">
+                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="bg-blue-600/30 p-2 rounded-lg backdrop-blur-md">
-                        <TrendingUp size={20} className="text-blue-400" />
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="bg-blue-600/20 p-2.5 rounded-2xl backdrop-blur-xl border border-white/10">
+                        <TrendingUp size={22} className="text-blue-400" />
                       </div>
-                      <h3 className="font-bold text-lg">Analista IA PostoPro</h3>
+                      <h3 className="font-black text-xl tracking-tight">Análise Estratégica IA</h3>
                     </div>
-                    <p className="text-slate-300 text-sm leading-relaxed max-w-2xl italic">
-                      "{generatingInsight ? 'Processando dados de volumetria e faturamento...' : (aiInsight || 'Pronto para analisar o desempenho do seu posto. Clique para começar.')}"
+                    <p className="text-slate-400 text-sm leading-relaxed max-w-3xl font-medium italic">
+                      {generatingInsight ? 'Processando milhões de pontos de dados...' : (aiInsight || 'Pronto para analisar o desempenho operacional do seu posto no período selecionado.')}
                     </p>
                   </div>
                   <button 
                     onClick={generateAIInsight}
                     disabled={generatingInsight}
-                    className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg hover:bg-blue-500 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-sm shadow-xl hover:bg-blue-500 transition-all flex items-center justify-center gap-3 disabled:opacity-50 group-hover:scale-105 active:scale-95"
                   >
                     {generatingInsight ? <RefreshCcw size={18} className="animate-spin" /> : <TrendingUp size={18} />}
-                    Gerar Percepção IA
+                    Gerar Novo Insight
                   </button>
                 </div>
-                <div className="absolute top-0 right-0 w-80 h-80 bg-blue-600/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl"></div>
+                <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-blue-600/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-[120px]"></div>
               </div>
 
               {/* Charts Section */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Dynamic Bar Chart: Sales by Frentista */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col">
-                  <div className="flex items-center justify-between mb-6">
+                <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col">
+                  <div className="flex items-center justify-between mb-8">
                     <div>
-                      <h3 className="font-bold text-gray-800">Soma de Abastecimentos por Frentista</h3>
-                      <p className="text-xs text-gray-400">Total acumulado (R$) no período filtrado</p>
+                      <h3 className="font-black text-slate-800 text-lg tracking-tight">Vendas por Frentista</h3>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Soma total de abastecimentos (R$)</p>
                     </div>
-                    <div className="bg-blue-50 p-2 rounded-lg">
-                      <User size={18} className="text-blue-600" />
+                    <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                      <User size={18} className="text-slate-400" />
                     </div>
                   </div>
                   <div className="h-80 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={chartDataByFrentista} layout="vertical" margin={{ left: 20 }}>
                         <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
-                        <XAxis type="number" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 10}} />
-                        <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{fill: '#1e293b', fontSize: 12, fontWeight: 600}} />
-                        <Tooltip 
-                          cursor={{fill: '#f1f5f9'}}
-                          contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
-                          formatter={(value: number) => [`R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 'Total']}
+                        <XAxis type="number" hide />
+                        <YAxis 
+                          dataKey="name" 
+                          type="category" 
+                          axisLine={false} 
+                          tickLine={false} 
+                          tick={{fill: '#1e293b', fontSize: 11, fontWeight: 800}} 
                         />
-                        <Bar dataKey="total" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={24} />
+                        <Tooltip 
+                          cursor={{fill: '#f8fafc'}}
+                          contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 25px 50px -12px rgb(0 0 0 / 0.15)', fontWeight: 'bold'}}
+                          formatter={(value: number) => [`R$ ${value.toFixed(2)}`, 'Total']}
+                        />
+                        <Bar dataKey="total" fill="#3b82f6" radius={[0, 8, 8, 0]} barSize={28} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
 
-                {/* Pie Chart: Fuel Mix */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-                  <div className="flex items-center justify-between mb-6">
+                <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
+                  <div className="flex items-center justify-between mb-8">
                     <div>
-                      <h3 className="font-bold text-gray-800">Mix de Combustíveis (Volume)</h3>
-                      <p className="text-xs text-gray-400">Distribuição por tipo de produto</p>
+                      <h3 className="font-black text-slate-800 text-lg tracking-tight">Mix de Combustível</h3>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Distribuição por Receita Total</p>
                     </div>
-                    <div className="bg-emerald-50 p-2 rounded-lg">
-                      <Fuel size={18} className="text-emerald-600" />
+                    <div className="bg-emerald-50 p-2.5 rounded-xl border border-emerald-100">
+                      <Fuel size={18} className="text-emerald-500" />
                     </div>
                   </div>
                   <div className="h-80">
@@ -433,9 +453,9 @@ export default function App() {
                           data={chartDataByFuel}
                           cx="50%"
                           cy="50%"
-                          innerRadius={70}
-                          outerRadius={100}
-                          paddingAngle={8}
+                          innerRadius={80}
+                          outerRadius={110}
+                          paddingAngle={10}
                           dataKey="value"
                           stroke="none"
                         >
@@ -444,10 +464,9 @@ export default function App() {
                           ))}
                         </Pie>
                         <Tooltip 
-                           contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
-                           formatter={(value: number) => [`R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 'Receita']}
+                           contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 25px 50px -12px rgb(0 0 0 / 0.15)', fontWeight: 'bold'}}
                         />
-                        <Legend verticalAlign="bottom" height={36}/>
+                        <Legend verticalAlign="bottom" height={36} iconType="circle"/>
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
@@ -457,80 +476,79 @@ export default function App() {
           )}
 
           {activeTab === 'history' && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="p-4 bg-gray-50 border-b border-gray-200 flex flex-wrap gap-4 items-center justify-between">
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="p-5 bg-slate-50 border-b border-gray-200 flex flex-wrap gap-4 items-center justify-between">
                 <div className="relative flex-1 max-w-md">
-                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                    <input 
                     type="text" 
-                    placeholder="Filtrar na visualização..."
-                    className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="Pesquisar nos registros atuais..."
+                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-2xl text-xs font-bold focus:ring-2 focus:ring-blue-500/20 outline-none shadow-inner"
                    />
                 </div>
-                <button 
-                  onClick={exportToCSV}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold shadow-md hover:bg-blue-700 transition-all"
-                >
-                  <Download size={18} />
-                  Exportar Filtro Atual
-                </button>
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-white px-4 py-2 rounded-xl border border-gray-200">
+                  Exibindo {filteredData.length} de {data.length} registros
+                </div>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Data / Caixa</th>
-                      <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Frentista</th>
-                      <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Bico / Prod.</th>
-                      <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Litros</th>
-                      <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Preço</th>
-                      <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Total</th>
-                      <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Encerrantes</th>
+                    <tr className="bg-slate-50 border-b border-gray-200">
+                      <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Data / Caixa</th>
+                      <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Operador / Frentista</th>
+                      <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Bico / Produto</th>
+                      <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Volume</th>
+                      <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Preço Un.</th>
+                      <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Total</th>
+                      <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Encerrantes</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {filteredData.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
-                          Nenhum registro encontrado para os filtros aplicados.
+                        <td colSpan={7} className="px-6 py-20 text-center">
+                          <div className="flex flex-col items-center gap-2 opacity-30">
+                            <Search size={48} />
+                            <p className="font-bold">Nenhum abastecimento encontrado.</p>
+                          </div>
                         </td>
                       </tr>
                     ) : filteredData.map((row, i) => (
-                      <tr key={i} className="hover:bg-blue-50/30 transition-colors group">
+                      <tr key={i} className="hover:bg-blue-50/20 transition-colors group">
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-bold text-gray-900">{row.dt_caixa}</div>
-                          <div className="text-xs text-gray-400 font-mono">SEQ: {row.seq_caixa}</div>
+                          <div className="text-sm font-bold text-slate-800">{row.dt_caixa}</div>
+                          <div className="text-[9px] text-slate-400 font-mono">ID: {row.seq_caixa}</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-xs">
-                              {row.apelido.substring(0, 2).toUpperCase()}
+                            <div className="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 flex items-center justify-center font-black text-xs">
+                              {row.apelido.charAt(0).toUpperCase()}
                             </div>
-                            <div>
-                              <div className="text-sm font-bold text-slate-700">{row.apelido}</div>
-                              <div className="text-[10px] text-gray-400 font-mono">{row.id_cartao_frentista}</div>
+                            <div className="flex flex-col">
+                              <div className="text-sm font-black text-slate-700">{row.apelido}</div>
+                              <div className="text-[9px] text-slate-400 font-bold uppercase">{row.id_cartao_frentista}</div>
                             </div>
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-semibold text-blue-600">Bico {row.cod_bico}</div>
-                          <div className="text-[10px] text-gray-500 uppercase truncate max-w-[120px]">{row.tipo_combustivel}</div>
+                          <div className="text-sm font-black text-blue-600">BICO {row.cod_bico}</div>
+                          <div className="text-[9px] text-slate-400 font-bold uppercase truncate max-w-[140px]">{row.tipo_combustivel}</div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-mono text-slate-600">
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-mono font-bold text-slate-600">
                           {row.litros.toFixed(3)} L
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-mono text-slate-500">
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-mono text-slate-400">
                           {row.preco.toFixed(3)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right">
-                          <span className="text-sm font-black text-slate-900 font-mono">
-                            R$ {row.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          <span className="text-sm font-black text-slate-900 font-mono bg-slate-100 px-2.5 py-1 rounded-lg">
+                            R$ {row.total.toFixed(2)}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-[10px] text-gray-400 font-mono">I: {row.enc_inicial.toFixed(1)}</div>
-                          <div className="text-[10px] text-blue-500 font-mono font-bold">F: {row.enc_final.toFixed(1)}</div>
+                          <div className="text-[10px] text-slate-400 font-mono">I: {row.enc_inicial.toFixed(1)}</div>
+                          <div className="text-[10px] text-blue-500 font-mono font-black">F: {row.enc_final.toFixed(1)}</div>
                         </td>
                       </tr>
                     ))}
@@ -541,79 +559,81 @@ export default function App() {
           )}
 
           {activeTab === 'settings' && (
-            <div className="max-w-2xl bg-white p-8 rounded-2xl shadow-sm border border-gray-200">
-              <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2">
-                <Database size={20} className="text-blue-600" />
-                Configurações da Instalação Firebird
-              </h3>
+            <div className="max-w-2xl bg-white p-10 rounded-[2.5rem] shadow-sm border border-gray-200">
+              <div className="flex items-center gap-4 mb-8">
+                <div className="p-3 bg-blue-600 rounded-2xl shadow-lg shadow-blue-200">
+                  <Database size={24} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-800">Conexão Firebird</h3>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Configurações de Acesso</p>
+                </div>
+              </div>
               
               <div className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-gray-700">Host (Local ou Rede)</label>
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">IP do Servidor / Host</label>
                     <input 
                       type="text" 
                       value={dbConfig.host}
                       onChange={(e) => setDbConfig({...dbConfig, host: e.target.value})}
-                      placeholder="Ex: 192.168.0.100"
-                      className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full px-5 py-3 border border-gray-200 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500/20 outline-none"
                     />
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-gray-700">Porta Firebird</label>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Porta (Padrão 3050)</label>
                     <input 
                       type="number" 
                       value={dbConfig.port}
                       onChange={(e) => setDbConfig({...dbConfig, port: parseInt(e.target.value)})}
-                      className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full px-5 py-3 border border-gray-200 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500/20 outline-none"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-gray-700">Caminho do Banco de Dados (.FDB)</label>
-                  <div className="flex gap-2">
-                    <input 
-                      type="text" 
-                      value={dbConfig.path}
-                      onChange={(e) => setDbConfig({...dbConfig, path: e.target.value})}
-                      placeholder="C:\Pasta\Dados.fdb"
-                      className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Caminho do Banco (.FDB)</label>
+                  <input 
+                    type="text" 
+                    value={dbConfig.path}
+                    onChange={(e) => setDbConfig({...dbConfig, path: e.target.value})}
+                    placeholder="Ex: C:\PostoMaster\DADOS.FDB"
+                    className="w-full px-5 py-3 border border-gray-200 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                  />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-gray-700">Usuário do Banco</label>
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Login</label>
                     <input 
                       type="text" 
                       defaultValue="sysdba"
-                      readOnly
-                      className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-500 cursor-not-allowed"
+                      disabled
+                      className="w-full px-5 py-3 bg-slate-50 border border-gray-200 rounded-2xl text-sm font-bold text-slate-400 cursor-not-allowed"
                     />
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-gray-700">Senha Master</label>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Senha</label>
                     <input 
                       type="password" 
                       defaultValue="masterkey"
-                      readOnly
-                      className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-500 cursor-not-allowed"
+                      disabled
+                      className="w-full px-5 py-3 bg-slate-50 border border-gray-200 rounded-2xl text-sm font-bold text-slate-400 cursor-not-allowed"
                     />
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-gray-100 flex items-center justify-between">
-                  <p className="text-xs text-gray-400 italic">Configure o IP para acesso em rede local.</p>
+                <div className="pt-8 border-t border-gray-100 flex items-center justify-between">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase leading-relaxed">As credenciais padrão do Firebird<br/>são protegidas por criptografia.</p>
                   <button 
                     onClick={() => {
                       setDbConfig({...dbConfig, status: 'connecting'});
-                      setTimeout(() => setDbConfig({...dbConfig, status: 'connected'}), 1500);
+                      setTimeout(() => setDbConfig({...dbConfig, status: 'connected'}), 1200);
                     }}
-                    className="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200"
+                    className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-sm hover:bg-blue-700 transition-all shadow-xl shadow-blue-200 active:scale-95"
                   >
-                    {dbConfig.status === 'connecting' ? 'Testando...' : 'Salvar Alterações'}
+                    {dbConfig.status === 'connecting' ? 'Testando Link...' : 'Salvar Configuração'}
                   </button>
                 </div>
               </div>
@@ -627,17 +647,17 @@ export default function App() {
 
 function StatCard({ title, value, icon, trend, positive }: { title: string, value: string | number, icon: React.ReactNode, trend: string, positive: boolean }) {
   return (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow group">
-      <div className="flex items-start justify-between mb-4">
-        <div className="p-2 bg-gray-50 rounded-xl group-hover:scale-110 transition-transform">
+    <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100 hover:shadow-xl hover:shadow-slate-200/50 transition-all group">
+      <div className="flex items-start justify-between mb-6">
+        <div className="p-3 bg-gray-50 rounded-2xl group-hover:scale-110 transition-transform border border-gray-100">
           {icon}
         </div>
-        <div className={`flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter ${positive ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+        <div className={`flex items-center gap-1 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-tighter ${positive ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>
           {positive ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}
           {trend}
         </div>
       </div>
-      <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">{title}</h4>
+      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{title}</h4>
       <p className="text-2xl font-black text-slate-800 tracking-tight">{value}</p>
     </div>
   );

@@ -37,3 +37,14 @@ export interface DashboardStats {
   avgPrice: number;
   fuelingCount: number;
 }
+
+export interface ChartDataItem {
+  name: string;
+  total: number;
+  litros: number;
+}
+
+export interface FuelChartItem {
+  name: string;
+  value: number;
+}
