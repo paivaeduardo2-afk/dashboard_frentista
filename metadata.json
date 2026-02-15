@@ -1,0 +1,5 @@
+{
+  "name": "Firebird Fuel Dashboard",
+  "description": "A high-performance management dashboard for Firebird-based gas station databases, featuring real-time analytics for fuelings, attendant performance, and detailed operational insights.",
+  "requestFramePermissions": []
+}
