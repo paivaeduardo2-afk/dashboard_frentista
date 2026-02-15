@@ -36,13 +36,12 @@ import { getJoinedData, MOCK_FUNCIONARIOS } from './services/mockData';
 import { JoinData, DBConfig, DashboardStats, ChartDataItem, FuelChartItem } from './types';
 import { GoogleGenAI } from "@google/genai";
 
-const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
-
-// Polyfill básico para process.env caso rode fora de ambientes que o injetam automaticamente
-// Isso evita erros de "process is not defined" em navegadores padrão
-if (typeof window !== 'undefined' && !(window as any).process) {
-  (window as any).process = { env: {} };
+// Garantir que process.env exista para evitar erros em navegadores puros
+if (typeof window !== 'undefined') {
+  (window as any).process = (window as any).process || { env: {} };
 }
+
+const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'history' | 'settings'>('dashboard');
@@ -70,12 +69,20 @@ export default function App() {
   const [generatingInsight, setGeneratingInsight] = useState(false);
 
   useEffect(() => {
+    let isMounted = true;
     setLoading(true);
+    
     const timer = setTimeout(() => {
-      setData(getJoinedData());
-      setLoading(false);
+      if (isMounted) {
+        setData(getJoinedData());
+        setLoading(false);
+      }
     }, 800);
-    return () => clearTimeout(timer);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
   }, []);
 
   const filteredData = useMemo(() => {
@@ -103,7 +110,6 @@ export default function App() {
     };
   }, [filteredData]);
 
-  // Fix: Explicitly type the initial value of reduce and cast Object.values to avoid 'unknown' and 'total' access errors
   const chartDataByFrentista = useMemo((): ChartDataItem[] => {
     const initialAcc: Record<string, ChartDataItem> = {};
     const grouped = filteredData.reduce((acc, curr) => {
@@ -114,11 +120,9 @@ export default function App() {
       acc[curr.apelido].litros += curr.litros;
       return acc;
     }, initialAcc);
-    // Cast to ChartDataItem[] to ensure correct typing for .sort() and final result
     return (Object.values(grouped) as ChartDataItem[]).sort((a, b) => b.total - a.total);
   }, [filteredData]);
 
-  // Fix: Explicitly type the initial value of reduce and cast Object.values to avoid 'unknown' errors
   const chartDataByFuel = useMemo((): FuelChartItem[] => {
     const initialAcc: Record<string, FuelChartItem> = {};
     const grouped = filteredData.reduce((acc, curr) => {
@@ -128,7 +132,6 @@ export default function App() {
       acc[curr.tipo_combustivel].value += curr.total;
       return acc;
     }, initialAcc);
-    // Cast to FuelChartItem[]
     return Object.values(grouped) as FuelChartItem[];
   }, [filteredData]);
 
@@ -165,8 +168,7 @@ export default function App() {
   const generateAIInsight = async () => {
     setGeneratingInsight(true);
     try {
-      // Fix: Initialize GoogleGenAI with process.env.API_KEY directly as per guidelines
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: (process.env as any).API_KEY });
       const topFrentista = (chartDataByFrentista[0] as ChartDataItem)?.name || 'N/A';
       const summary = `Dados: Faturamento R$ ${stats.totalRevenue.toFixed(2)}, Volume ${stats.totalLiters.toFixed(2)}L, Destaque: ${topFrentista}.`;
       
