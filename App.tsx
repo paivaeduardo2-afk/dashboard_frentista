@@ -159,7 +159,7 @@ export default function App() {
   const generateAIInsight = async () => {
     setGeneratingInsight(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
       const topFrentista = chartDataByFrentista[0]?.name || 'N/A';
       const summary = `Dashboard Posto: Receita R$ ${stats.totalRevenue.toFixed(2)}, Volume ${stats.totalLiters.toFixed(2)}L, Destaque ${topFrentista}.`;
       
