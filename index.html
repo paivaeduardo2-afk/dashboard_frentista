@@ -4,32 +4,27 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Firebird Fuel Dashboard</title>
-    <!-- Favicon para evitar erro 404 -->
+    <!-- Favicon inline para evitar erro 404 em qualquer servidor -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛽</text></svg>">
-    <!-- Tailwind CSS v2.2.19 via CDN -->
+    <!-- Tailwind CSS via CDN -->
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; overflow: hidden; }
+        body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; overflow: hidden; background-color: #f8fafc; }
         .rounded-3xl { border-radius: 1.5rem; }
         .rounded-\[2\.5rem\] { border-radius: 2.5rem; }
-        .rounded-\[2rem\] { border-radius: 2rem; }
         .bg-slate-900 { background-color: #0f172a; }
         .bg-slate-800 { background-color: #1e293b; }
-        .bg-slate-800\/50 { background-color: rgba(30, 41, 59, 0.5); }
-        .bg-slate-50 { background-color: #f8fafc; }
         .text-slate-900 { color: #0f172a; }
-        .text-slate-800 { color: #1e293b; }
-        .text-slate-700 { color: #334155; }
-        .text-slate-500 { color: #64748b; }
         .text-slate-400 { color: #94a3b8; }
-        .text-slate-300 { color: #cbd5e1; }
-        .border-slate-800 { border-color: #1e293b; }
         .border-slate-200 { border-color: #e2e8f0; }
-        .border-slate-100 { border-color: #f1f5f9; }
-        .ring-black\/5 { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05); }
-        .backdrop-blur-md { backdrop-filter: blur(12px); }
-        .backdrop-blur-xl { backdrop-filter: blur(24px); }
+        .backdrop-blur-md { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+        
+        /* Custom scrollbar para parecer app nativo */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     </style>
     <script type="importmap">
 {
@@ -46,7 +41,8 @@
 }
 </script>
 </head>
-<body class="bg-gray-50 text-gray-900 h-screen overflow-hidden">
+<body class="h-screen overflow-hidden">
     <div id="root" class="h-full"></div>
+    <script type="module" src="index.tsx"></script>
 </body>
 </html>
