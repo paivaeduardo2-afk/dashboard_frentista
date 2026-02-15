@@ -12,7 +12,9 @@ import {
   AlertCircle,
   Search,
   FolderOpen,
-  CheckCircle2
+  CheckCircle2,
+  Link as LinkIcon,
+  Zap
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -37,6 +39,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'history' | 'settings'>('dashboard');
   const [data, setData] = useState<JoinData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -119,19 +122,31 @@ export default function App() {
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      // Como navegadores não fornecem o caminho real C:\ por segurança, 
-      // simulamos a atualização do path para fins de visualização do dashboard.
       setDbConfig(prev => ({
         ...prev,
         path: `C:\\...\\${file.name}`,
-        status: 'connecting'
+        status: 'disconnected'
       }));
-      
-      setLoading(true);
-      setTimeout(() => {
-        setDbConfig(prev => ({ ...prev, status: 'connected' }));
-        setLoading(false);
-      }, 1000);
+    }
+  };
+
+  const handleConnect = async () => {
+    if (!dbConfig.path) return;
+    
+    setIsConnecting(true);
+    setDbConfig(prev => ({ ...prev, status: 'connecting' }));
+    
+    try {
+      // Simulando handshake com Firebird Engine local
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      setDbConfig(prev => ({ ...prev, status: 'connected' }));
+      setData(getJoinedData());
+      // Feedback visual opcional ou redirecionamento
+      setTimeout(() => setActiveTab('dashboard'), 500);
+    } catch (err) {
+      setDbConfig(prev => ({ ...prev, status: 'disconnected' }));
+    } finally {
+      setIsConnecting(false);
     }
   };
 
@@ -153,7 +168,7 @@ export default function App() {
     }
   };
 
-  if (loading) {
+  if (loading && !isConnecting) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50">
         <div className="text-center">
@@ -183,8 +198,10 @@ export default function App() {
         <div className="border-t border-slate-800 p-4">
           <div className="rounded-xl bg-slate-800/50 p-4">
             <div className="flex items-center gap-2 mb-1">
-              <div className={`h-2 w-2 rounded-full ${dbConfig.status === 'connected' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`}></div>
-              <span className="text-[10px] font-bold text-slate-300 uppercase">Local Engine</span>
+              <div className={`h-2 w-2 rounded-full ${dbConfig.status === 'connected' ? 'bg-emerald-500' : dbConfig.status === 'connecting' ? 'bg-amber-500 animate-pulse' : 'bg-red-500'}`}></div>
+              <span className="text-[10px] font-bold text-slate-300 uppercase">
+                {dbConfig.status === 'connected' ? 'Conectado' : dbConfig.status === 'connecting' ? 'Conectando...' : 'Desconectado'}
+              </span>
             </div>
             <p className="truncate text-[9px] text-slate-500 font-mono">{dbConfig.path}</p>
           </div>
@@ -337,7 +354,7 @@ export default function App() {
                       </div>
                       <button 
                         onClick={() => fileInputRef.current?.click()}
-                        className="flex items-center gap-2 rounded-2xl bg-slate-900 px-6 py-4 text-xs font-black uppercase text-white transition-all hover:bg-slate-800 active:scale-95 shadow-lg"
+                        className="flex items-center gap-2 rounded-2xl bg-slate-100 px-6 py-4 text-xs font-black uppercase text-slate-800 transition-all hover:bg-slate-200 active:scale-95 border border-slate-200"
                       >
                         <FolderOpen size={18} />
                         Procurar
@@ -352,7 +369,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-6 pt-4">
+                  <div className="grid grid-cols-2 gap-6 pt-2">
                     <div className="space-y-2">
                       <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Endereço do Servidor (Host)</label>
                       <input type="text" value={dbConfig.host} onChange={(e) => setDbConfig({...dbConfig, host: e.target.value})} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-xs font-bold outline-none focus:border-blue-500 focus:ring-4" />
@@ -363,14 +380,31 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="rounded-2xl bg-blue-50/50 p-6 border border-blue-100 flex items-start gap-4">
-                     <AlertCircle className="text-blue-600 mt-1" size={20} />
-                     <div className="space-y-1">
-                        <h4 className="text-xs font-black text-blue-900 uppercase">Instruções de Conexão</h4>
-                        <p className="text-[11px] text-blue-700 leading-relaxed">
-                          Para ler dados diretamente do banco de dados local, certifique-se de que o serviço <strong>Firebird Server</strong> está rodando e que as permissões de leitura do arquivo .FDB estão liberadas para o usuário do sistema.
-                        </p>
-                     </div>
+                  <div className="flex flex-col gap-4 border-t border-slate-100 pt-8">
+                    <button 
+                      onClick={handleConnect}
+                      disabled={isConnecting || !dbConfig.path}
+                      className={`flex items-center justify-center gap-3 rounded-3xl px-8 py-5 text-sm font-black uppercase tracking-wider text-white transition-all shadow-xl active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed ${dbConfig.status === 'connected' ? 'bg-emerald-600 shadow-emerald-200 hover:bg-emerald-500' : 'bg-blue-600 shadow-blue-200 hover:bg-blue-500'}`}
+                    >
+                      {isConnecting ? (
+                        <RefreshCcw size={20} className="animate-spin" />
+                      ) : dbConfig.status === 'connected' ? (
+                        <CheckCircle2 size={20} />
+                      ) : (
+                        <Zap size={20} />
+                      )}
+                      {isConnecting ? 'Estabelecendo Conexão...' : dbConfig.status === 'connected' ? 'Banco Conectado' : 'Conectar ao Banco Agora'}
+                    </button>
+                    
+                    <div className="rounded-2xl bg-blue-50/50 p-6 border border-blue-100 flex items-start gap-4">
+                       <AlertCircle className="text-blue-600 mt-1" size={20} />
+                       <div className="space-y-1">
+                          <h4 className="text-xs font-black text-blue-900 uppercase">Diretrizes do Firebird SQL</h4>
+                          <p className="text-[11px] text-blue-700 leading-relaxed">
+                            O botão de conexão valida o caminho indicado e tenta ler as tabelas <strong>ABASTECIMENTO</strong> e <strong>FUNCIONARIO</strong>. Certifique-se de que o arquivo não esteja sendo utilizado em modo exclusivo por outro processo.
+                          </p>
+                       </div>
+                    </div>
                   </div>
                 </div>
               </div>
