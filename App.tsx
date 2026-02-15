@@ -159,7 +159,7 @@ export default function App() {
   const generateAIInsight = async () => {
     setGeneratingInsight(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const topFrentista = chartDataByFrentista[0]?.name || 'N/A';
       const summary = `Dashboard Posto: Receita R$ ${stats.totalRevenue.toFixed(2)}, Volume ${stats.totalLiters.toFixed(2)}L, Destaque ${topFrentista}.`;
       
@@ -454,8 +454,8 @@ function StatCard({ title, value, icon, color }: { title: string, value: string 
   };
   
   return (
-    <div className="rounded-[2.5rem] border border-slate-100 bg-white p-8 shadow-sm transition-all hover:shadow-xl">
-      <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-lg group-hover:scale-110 transition-transform ${colorMap[color]}">
+    <div className="rounded-[2.5rem] border border-slate-100 bg-white p-8 shadow-sm transition-all hover:shadow-xl group">
+      <div className={`mb-6 flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-lg group-hover:scale-110 transition-transform ${colorMap[color]}`}>
         {icon}
       </div>
       <h4 className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">{title}</h4>
