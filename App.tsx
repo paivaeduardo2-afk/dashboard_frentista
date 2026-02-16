@@ -13,11 +13,8 @@ import {
   AlertCircle,
   Search,
   FolderOpen,
-  CheckCircle2,
   Zap,
   Server,
-  Terminal,
-  Code,
   XCircle,
   AlertTriangle,
   Info
@@ -56,7 +53,6 @@ export default function App() {
     status: 'disconnected'
   });
 
-  // Alterado para 20 dias conforme solicitado
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 20); 
@@ -78,6 +74,39 @@ export default function App() {
     return false;
   };
 
+  const handleConnect = async () => {
+    setIsConnecting(true);
+    setErrorMessage(null);
+    setDbConfig(prev => ({ ...prev, status: 'connecting' }));
+    
+    try {
+      const isOnline = await checkBridge();
+      if (!isOnline) {
+        throw new Error("Agente offline. Certifique-se de que o arquivo bridge.js está rodando.");
+      }
+
+      const response = await fetch('http://localhost:3001/api/data');
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({ error: 'Erro desconhecido' }));
+        throw new Error(errData.error || "Erro ao ler banco Firebird");
+      }
+
+      const realData = await response.json();
+      if (!Array.isArray(realData)) {
+        throw new Error("Formato de dados inválido recebido do banco.");
+      }
+
+      setData(realData);
+      setDbConfig(prev => ({ ...prev, status: 'connected' }));
+      setActiveTab('dashboard');
+    } catch (err: any) {
+      setErrorMessage(err.message);
+      setDbConfig(prev => ({ ...prev, status: 'disconnected' }));
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
   useEffect(() => {
     const init = async () => {
       setLoading(true);
@@ -92,44 +121,28 @@ export default function App() {
     init();
   }, []);
 
-  const handleConnect = async () => {
-    setIsConnecting(true);
-    setErrorMessage(null);
-    setDbConfig(prev => ({ ...prev, status: 'connecting' }));
+  const parseFirebirdDate = (dateStr: string) => {
+    if (!dateStr) return null;
+    // Tenta ISO primeiro
+    let d = new Date(dateStr);
+    if (!isNaN(d.getTime())) return d;
     
-    try {
-      const isOnline = await checkBridge();
-      if (!isOnline) {
-        throw new Error("Agente offline. Certifique-se de que o arquivo bridge.js está rodando com 'node bridge.js'.");
+    // Tenta formato brasileiro comum em Firebird se falhar
+    if (dateStr.includes('.')) {
+      const parts = dateStr.split('.');
+      if (parts.length === 3) {
+        d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T12:00:00`);
+        if (!isNaN(d.getTime())) return d;
       }
-
-      const response = await fetch('http://localhost:3001/api/data');
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || "Erro ao ler banco Firebird");
-      }
-
-      const realData = await response.json();
-      if (!Array.isArray(realData)) {
-        throw new Error("O banco retornou um formato inválido. Esperado uma lista de registros.");
-      }
-
-      setData(realData);
-      setDbConfig(prev => ({ ...prev, status: 'connected' }));
-      setActiveTab('dashboard');
-    } catch (err: any) {
-      setErrorMessage(err.message);
-      setDbConfig(prev => ({ ...prev, status: 'disconnected' }));
-    } finally {
-      setIsConnecting(false);
     }
+    return null;
   };
 
   const filteredData = useMemo(() => {
     return data.filter(item => {
-      if (!item.dt_caixa) return false;
-      // Garante que a data seja lida corretamente mesmo que venha em formatos diferentes
-      const itemDate = new Date(item.dt_caixa.includes('T') ? item.dt_caixa : item.dt_caixa + 'T00:00:00');
+      const itemDate = parseFirebirdDate(item.dt_caixa);
+      if (!itemDate) return false;
+      
       const start = new Date(startDate + 'T00:00:00');
       const end = new Date(endDate + 'T23:59:59');
       return itemDate >= start && itemDate <= end;
@@ -137,12 +150,12 @@ export default function App() {
   }, [data, startDate, endDate]);
 
   const stats = useMemo((): DashboardStats => {
-    const totalRevenue = filteredData.reduce((acc, curr) => acc + (curr.total || 0), 0);
-    const totalLiters = filteredData.reduce((acc, curr) => acc + (curr.litros || 0), 0);
+    const totalRevenue = filteredData.reduce((acc, curr) => acc + (Number(curr.total) || 0), 0);
+    const totalLiters = filteredData.reduce((acc, curr) => acc + (Number(curr.litros) || 0), 0);
     return {
       totalRevenue,
       totalLiters,
-      avgPrice: totalRevenue / (totalLiters || 1),
+      avgPrice: totalLiters > 0 ? totalRevenue / totalLiters : 0,
       fuelingCount: filteredData.length
     };
   }, [filteredData]);
@@ -152,7 +165,8 @@ export default function App() {
     filteredData.forEach(curr => {
       const name = curr.apelido || 'OUTROS';
       if (!grouped[name]) grouped[name] = { name, total: 0, litros: 0 };
-      grouped[name].total += (curr.total || 0);
+      grouped[name].total += (Number(curr.total) || 0);
+      grouped[name].litros += (Number(curr.litros) || 0);
     });
     return Object.values(grouped).sort((a, b) => b.total - a.total);
   }, [filteredData]);
@@ -162,7 +176,7 @@ export default function App() {
     filteredData.forEach(curr => {
       const name = curr.tipo_combustivel || 'OUTROS';
       if (!grouped[name]) grouped[name] = { name, value: 0 };
-      grouped[name].value += (curr.total || 0);
+      grouped[name].value += (Number(curr.total) || 0);
     });
     return Object.values(grouped);
   }, [filteredData]);
@@ -249,21 +263,11 @@ export default function App() {
               </div>
               <h3 className="text-2xl font-black text-slate-800 uppercase">Nenhum dado importado</h3>
               <p className="mx-auto mt-2 max-w-md text-sm font-medium text-slate-400 leading-relaxed">
-                O sistema conectou, mas a tabela <b>ABASTECIMENTOS</b> parece estar vazia ou a query no <b>bridge.js</b> não está retornando dados.
+                O sistema conectou, mas não há dados. Verifique sua query no <b>bridge.js</b>.
               </p>
               <button onClick={handleConnect} className="mt-8 inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-8 py-4 text-xs font-black uppercase tracking-widest text-white shadow-xl hover:bg-blue-500">
-                <RefreshCcw size={16} /> Tentar Sincronizar Novamente
+                <RefreshCcw size={16} /> Sincronizar Agora
               </button>
-            </div>
-          )}
-
-          {data.length > 0 && filteredData.length === 0 && (
-            <div className="rounded-[2.5rem] border border-amber-100 bg-amber-50/50 p-12 text-center">
-              <AlertTriangle className="mx-auto mb-4 text-amber-500" size={48} />
-              <h3 className="text-xl font-black text-amber-800 uppercase">Nenhum dado nos últimos 20 dias</h3>
-              <p className="mt-2 text-sm text-amber-600">
-                Importamos {data.length} registros no total, mas nenhum corresponde ao filtro de datas selecionado.
-              </p>
             </div>
           )}
 
@@ -272,32 +276,32 @@ export default function App() {
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
                 <MetricCard title="Vendas Totais" value={`R$ ${stats.totalRevenue.toLocaleString()}`} icon={<TrendingUp />} color="blue" />
                 <MetricCard title="Volume (Litros)" value={`${stats.totalLiters.toFixed(2)} L`} icon={<Fuel />} color="emerald" />
-                <MetricCard title="Ticket Médio" value={`R$ ${(stats.totalRevenue / (stats.fuelingCount || 1)).toFixed(2)}`} icon={<ArrowUpRight />} color="amber" />
+                <MetricCard title="Ticket Médio" value={`R$ ${stats.avgPrice.toFixed(2)}`} icon={<ArrowUpRight />} color="amber" />
                 <MetricCard title="Abastecimentos" value={stats.fuelingCount} icon={<RefreshCcw />} color="indigo" />
               </div>
 
               <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-                <div className="rounded-[2.5rem] border border-slate-100 bg-white p-8 shadow-sm">
+                <div className="rounded-[2.5rem] border border-slate-100 bg-white p-8 shadow-sm h-[400px]">
                   <h3 className="mb-6 text-lg font-black text-slate-800 uppercase tracking-tighter">Desempenho por Operador</h3>
-                  <div className="h-80">
+                  <div className="h-64">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={chartDataByFrentista} layout="vertical">
                         <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
                         <XAxis type="number" hide />
                         <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{fill: '#475569', fontSize: 11, fontWeight: 800}} width={90} />
-                        <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'}} />
+                        <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '12px', border: 'none'}} />
                         <Bar dataKey="total" fill="#3b82f6" radius={[0, 8, 8, 0]} barSize={24} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
 
-                <div className="rounded-[2.5rem] border border-slate-100 bg-white p-8 shadow-sm">
+                <div className="rounded-[2.5rem] border border-slate-100 bg-white p-8 shadow-sm h-[400px]">
                   <h3 className="mb-6 text-lg font-black text-slate-800 uppercase tracking-tighter">Vendas por Combustível</h3>
-                  <div className="h-80">
+                  <div className="h-64">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
-                        <Pie data={chartDataByFuel} cx="50%" cy="50%" innerRadius={80} outerRadius={110} paddingAngle={8} dataKey="value" stroke="none">
+                        <Pie data={chartDataByFuel} cx="50%" cy="50%" innerRadius={70} outerRadius={100} paddingAngle={8} dataKey="value" stroke="none">
                           {chartDataByFuel.map((_, index) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}
                         </Pie>
                         <Tooltip contentStyle={{borderRadius: '12px', border: 'none'}} />
@@ -323,9 +327,9 @@ export default function App() {
                    </button>
                 </div>
               </div>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto max-h-[600px]">
                 <table className="w-full text-left">
-                  <thead className="bg-slate-50/50">
+                  <thead className="sticky top-0 bg-slate-50 z-10">
                     <tr>
                       <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest">Data</th>
                       <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest">Frentista</th>
@@ -338,12 +342,12 @@ export default function App() {
                     {filteredData.slice(0, 100).map((row, i) => (
                       <tr key={i} className="hover:bg-slate-50/50 transition-colors">
                         <td className="px-6 py-4 font-mono text-[11px] font-bold text-slate-500">
-                          {row.dt_caixa ? new Date(row.dt_caixa.includes('T') ? row.dt_caixa : row.dt_caixa + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
+                          {parseFirebirdDate(row.dt_caixa)?.toLocaleDateString('pt-BR') || '-'}
                         </td>
                         <td className="px-6 py-4 text-xs font-black text-slate-800">{row.apelido}</td>
                         <td className="px-6 py-4"><span className="rounded bg-blue-50 px-2 py-1 text-[9px] font-black text-blue-600 uppercase">{row.tipo_combustivel}</span></td>
-                        <td className="px-6 py-4 text-right font-mono text-xs font-bold text-slate-600">{(row.litros || 0).toFixed(2)}</td>
-                        <td className="px-6 py-4 text-right text-xs font-black text-emerald-600">R$ {(row.total || 0).toFixed(2)}</td>
+                        <td className="px-6 py-4 text-right font-mono text-xs font-bold text-slate-600">{(Number(row.litros) || 0).toFixed(2)}</td>
+                        <td className="px-6 py-4 text-right text-xs font-black text-emerald-600">R$ {(Number(row.total) || 0).toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -360,39 +364,25 @@ export default function App() {
                     <Server size={32} />
                   </div>
                   <div>
-                    <h3 className="text-2xl font-black text-slate-800">Parâmetros de Conexão</h3>
-                    <p className="text-sm font-medium text-slate-400">Ponte HTTP ⟷ Firebird SQL</p>
+                    <h3 className="text-2xl font-black text-slate-800">Status da Conexão</h3>
+                    <p className="text-sm font-medium text-slate-400">Configurações Locais</p>
                   </div>
                 </div>
 
                 {errorMessage && (
-                   <div className="mb-6 rounded-2xl bg-red-50 border border-red-100 p-6 flex flex-col gap-4">
-                      <div className="flex items-start gap-3 text-red-600">
-                        <XCircle size={20} className="shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-xs font-black uppercase mb-1">Erro de SQL Detectado</p>
-                          <p className="text-[11px] font-bold leading-relaxed">{errorMessage}</p>
-                        </div>
+                   <div className="mb-6 rounded-2xl bg-red-50 border border-red-100 p-6 flex items-start gap-3 text-red-600">
+                      <XCircle size={20} className="shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-black uppercase mb-1">Erro Detectado</p>
+                        <p className="text-[11px] font-bold leading-relaxed">{errorMessage}</p>
                       </div>
                    </div>
                 )}
 
                 <div className="space-y-6">
-                  <div>
-                    <label className="mb-2 block text-[10px] font-black uppercase text-slate-400 ml-1">Arquivo FDB (Local)</label>
-                    <div className="flex items-center gap-3">
-                      <input 
-                        type="text" 
-                        value={dbConfig.path} 
-                        onChange={(e) => setDbConfig({...dbConfig, path: e.target.value})}
-                        className="flex-1 rounded-2xl border border-slate-200 bg-slate-50 py-4 px-6 text-xs font-bold outline-none focus:ring-4 focus:ring-blue-500/10" 
-                      />
-                      <button onClick={() => fileInputRef.current?.click()} className="rounded-2xl bg-slate-100 p-4 border border-slate-200"><FolderOpen size={20} /></button>
-                      <input type="file" ref={fileInputRef} className="hidden" accept=".fdb" onChange={(e) => {
-                         const f = e.target.files?.[0];
-                         if(f) setDbConfig({...dbConfig, path: `C:\\PostoMaster\\BD\\${f.name}`});
-                      }} />
-                    </div>
+                  <div className="rounded-2xl bg-slate-50 p-6 border border-slate-100">
+                    <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Caminho do Banco</p>
+                    <p className="text-xs font-mono font-bold text-slate-700 break-all">{dbConfig.path}</p>
                   </div>
 
                   <button 
@@ -401,33 +391,30 @@ export default function App() {
                     className="flex w-full items-center justify-center gap-3 rounded-3xl bg-blue-600 py-5 text-sm font-black uppercase tracking-widest text-white shadow-xl hover:bg-blue-500 transition-all disabled:opacity-50"
                   >
                     {isConnecting ? <RefreshCcw size={20} className="animate-spin" /> : <Zap size={20} />}
-                    {isConnecting ? 'Sincronizando...' : 'Conectar e Atualizar Agora'}
+                    {isConnecting ? 'Sincronizando...' : 'Conectar Agora'}
                   </button>
                 </div>
               </div>
 
               <div className="rounded-[2.5rem] border border-slate-200 bg-slate-900 p-10 text-white shadow-sm relative overflow-hidden">
                 <div className="relative z-10">
-                  <h3 className="text-xl font-black mb-6 uppercase text-blue-400">Importação dos Últimos 20 Dias</h3>
+                  <h3 className="text-xl font-black mb-6 uppercase text-blue-400 tracking-tighter">Lembrete de Importação (20 Dias)</h3>
                   
                   <div className="space-y-6">
-                    <Step num="1" title="Filtro de Data Ativo" desc="O Dashboard agora solicita por padrão dados dos últimos 20 dias." />
-                    <Step num="2" title="Otimização no Agente" desc="Se não estiver importando nada, altere o seu arquivo bridge.js para buscar apenas o período recente." />
-                    <Step num="3" title="SQL Sugerido (V20)" desc="Use a query abaixo para filtrar direto no servidor Firebird." />
+                    <Step num="1" title="Verifique o Filtro" desc="O Dashboard exibe por padrão registros dos últimos 20 dias." />
+                    <Step num="2" title="SQL do bridge.js" desc="Certifique-se que o seu código local está buscando o campo DT_CAIXA." />
+                    <Step num="3" title="Tabelas Plurais" desc="As tabelas DEVEM ser ABASTECIMENTOS e FUNCIONARIOS." />
                   </div>
 
                   <div className="mt-10 p-6 rounded-2xl bg-slate-800 border border-slate-700">
-                    <p className="text-[10px] font-black text-emerald-400 uppercase mb-3 font-mono tracking-tighter">Query Otimizada para o bridge.js:</p>
-                    <code className="text-[11px] font-mono text-slate-300 block bg-black/40 p-4 rounded-xl leading-relaxed whitespace-pre">
+                    <p className="text-[10px] font-black text-emerald-400 uppercase mb-3 font-mono">Query Correta para bridge.js:</p>
+                    <code className="text-[11px] font-mono text-slate-300 block bg-black/40 p-4 rounded-xl leading-relaxed">
                       SELECT a.*, f.apelido <br/>
-                      FROM <span className="text-emerald-400 font-black">ABASTECIMENTOS</span> a <br/>
-                      LEFT JOIN <span className="text-emerald-400 font-black">FUNCIONARIOS</span> f <br/>
-                      ON a.id_cartao_frentista = f.id_cartao_abast <br/>
-                      <span className="text-blue-400 font-black">WHERE a.dt_caixa >= 'now' - 20</span> <br/>
-                      ORDER BY a.dt_caixa DESC
+                      FROM ABASTECIMENTOS a <br/>
+                      LEFT JOIN FUNCIONARIOS f ON a.id_cartao_frentista = f.id_cartao_abast <br/>
+                      WHERE a.dt_caixa >= 'now' - 20
                     </code>
                   </div>
-                  <p className="mt-4 text-[10px] font-bold text-slate-500 italic uppercase">Nota: O comando 'now' - 20 no Firebird pega automaticamente os últimos 20 dias.</p>
                 </div>
               </div>
             </div>
