@@ -18,7 +18,8 @@ import {
   Server,
   Terminal,
   Code,
-  XCircle
+  XCircle,
+  AlertTriangle
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -61,8 +62,6 @@ export default function App() {
     return d.toISOString().split('T')[0];
   });
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [aiInsight, setAiInsight] = useState<string>('');
-  const [generatingInsight, setGeneratingInsight] = useState(false);
 
   const checkBridge = async () => {
     try {
@@ -106,7 +105,9 @@ export default function App() {
       const response = await fetch('http://localhost:3001/api/data');
       if (!response.ok) {
         const errData = await response.json();
-        throw new Error(errData.error || "Erro ao ler banco Firebird");
+        // Captura o erro específico de tabela desconhecida com erro de digitação
+        const rawError = errData.error || "Erro ao ler banco Firebird";
+        throw new Error(rawError);
       }
 
       const realData = await response.json();
@@ -160,6 +161,13 @@ export default function App() {
     });
     return Object.values(grouped);
   }, [filteredData]);
+
+  // Função para checar se houve erro de digitação na tabela
+  const checkTypoError = (msg: string) => {
+    if (msg.includes('ABASTECIMENTOSS')) return 'TABELA COM "S" A MAIS: Verifique ABASTECIMENTOSS no bridge.js';
+    if (msg.includes('FUNCIONARIOSS')) return 'TABELA COM "S" A MAIS: Verifique FUNCIONARIOSS no bridge.js';
+    return null;
+  };
 
   if (loading && !isConnecting) {
     return (
@@ -316,13 +324,25 @@ export default function App() {
                 </div>
 
                 {errorMessage && (
-                   <div className="mb-6 rounded-2xl bg-red-50 border border-red-100 p-6 flex items-start gap-3 text-red-600">
-                      <XCircle size={20} className="shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-xs font-black uppercase mb-1">Erro Detectado</p>
-                        <p className="text-[11px] font-bold leading-relaxed">{errorMessage}</p>
-                        <p className="mt-3 text-[10px] font-black text-red-400 uppercase">Atenção: Use as tabelas no plural: ABASTECIMENTOS e FUNCIONARIOS.</p>
+                   <div className="mb-6 rounded-2xl bg-red-50 border border-red-100 p-6 flex flex-col gap-4">
+                      <div className="flex items-start gap-3 text-red-600">
+                        <XCircle size={20} className="shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-black uppercase mb-1">Erro de SQL Detectado</p>
+                          <p className="text-[11px] font-bold leading-relaxed">{errorMessage}</p>
+                        </div>
                       </div>
+                      
+                      {checkTypoError(errorMessage) && (
+                        <div className="rounded-xl bg-red-600 p-4 text-white shadow-lg animate-pulse">
+                          <div className="flex items-center gap-2 mb-1">
+                            <AlertTriangle size={16} />
+                            <span className="text-[10px] font-black uppercase">Correção Necessária Agora</span>
+                          </div>
+                          <p className="text-[11px] font-bold">{checkTypoError(errorMessage)}</p>
+                          <p className="mt-2 text-[10px] opacity-80">Você digitou dois "S" no final de ABASTECIMENTOS no seu arquivo bridge.js.</p>
+                        </div>
+                      )}
                    </div>
                 )}
 
@@ -357,24 +377,25 @@ export default function App() {
 
               <div className="rounded-[2.5rem] border border-slate-200 bg-slate-900 p-10 text-white shadow-sm relative overflow-hidden">
                 <div className="relative z-10">
-                  <h3 className="text-xl font-black mb-6 uppercase">Padrão Firebird PostoMaster</h3>
+                  <h3 className="text-xl font-black mb-6 uppercase text-blue-400">Correção do Erro -204</h3>
                   
                   <div className="space-y-6">
-                    <Step num="1" title="Senha masterkey" desc="Senha oficial configurada no Agente Local: 'masterkey' (minúsculo)." />
-                    <Step num="2" title="Tabelas no Plural" desc="O PostoMaster utiliza os nomes no plural: ABASTECIMENTOS e FUNCIONARIOS." />
-                    <Step num="3" title="Relacionamento (Join)" desc="Sua query no bridge.js deve unir as tabelas para mostrar o nome do frentista." />
+                    <Step num="1" title="Tabelas no Plural" desc="Nomes corretos: ABASTECIMENTOS e FUNCIONARIOS (Um único 'S' no final)." />
+                    <Step num="2" title="Cuidado com Typos" desc="Seu erro atual indica 'ABASTECIMENTOSS' (Dois 'S'). Remova o 'S' extra no seu bridge.js." />
+                    <Step num="3" title="SQL Correto" desc="Use EXATAMENTE a query abaixo no seu arquivo local." />
                   </div>
 
                   <div className="mt-10 p-6 rounded-2xl bg-slate-800 border border-slate-700">
-                    <p className="text-[10px] font-black text-blue-400 uppercase mb-3">Query Completa para o bridge.js:</p>
+                    <p className="text-[10px] font-black text-emerald-400 uppercase mb-3 font-mono tracking-tighter">Copie este SQL para o bridge.js:</p>
                     <code className="text-[11px] font-mono text-slate-300 block bg-black/40 p-4 rounded-xl leading-relaxed">
                       SELECT a.*, f.apelido <br/>
-                      FROM ABASTECIMENTOS a <br/>
-                      LEFT JOIN FUNCIONARIOS f <br/>
+                      FROM <span className="text-emerald-400 font-black">ABASTECIMENTOS</span> a <br/>
+                      LEFT JOIN <span className="text-emerald-400 font-black">FUNCIONARIOS</span> f <br/>
                       ON a.id_cartao_frentista = f.id_cartao_abast <br/>
                       ORDER BY a.dt_caixa DESC
                     </code>
                   </div>
+                  <p className="mt-4 text-[10px] font-bold text-slate-500 italic uppercase">Dica: Após corrigir no bridge.js, salve o arquivo e reinicie o comando 'node bridge.js'.</p>
                 </div>
               </div>
             </div>
