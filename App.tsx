@@ -339,7 +339,7 @@ export default function App() {
                       <div>
                         <p className="text-xs font-black uppercase mb-1">Erro Detectado</p>
                         <p className="text-[11px] font-bold leading-relaxed">{errorMessage}</p>
-                        <p className="mt-3 text-[10px] font-black text-red-400 uppercase">Dica: Verifique se a tabela é ABASTECIMENTOS (plural).</p>
+                        <p className="mt-3 text-[10px] font-black text-red-400 uppercase">Atenção: A tabela correta deve ser ABASTECIMENTOS (Plural).</p>
                       </div>
                    </div>
                 )}
@@ -375,19 +375,19 @@ export default function App() {
 
               <div className="rounded-[2.5rem] border border-slate-200 bg-slate-900 p-10 text-white shadow-sm relative overflow-hidden">
                 <div className="relative z-10">
-                  <h3 className="text-xl font-black mb-6 uppercase">Correção do Erro -204</h3>
+                  <h3 className="text-xl font-black mb-6 uppercase">Configuração Confirmada</h3>
                   
                   <div className="space-y-6">
-                    <Step num="1" title="Senha masterkey" desc="A senha padrão do Firebird é 'masterkey' (minúsculo). Já configurei no bridge.js." />
-                    <Step num="2" title="Tabela ABASTECIMENTOS" desc="Se o erro persistir, o PostoMaster usa o nome no PLURAL. Altere no bridge.js para 'SELECT * FROM ABASTECIMENTOS'." />
-                    <Step num="3" title="Reiniciar Agente" desc="Toda vez que mudar o código bridge.js, você deve parar o terminal (Ctrl+C) e rodar 'node bridge.js' novamente." />
+                    <Step num="1" title="Senha masterkey" desc="Senha oficial configurada no Agente Local: 'masterkey'." />
+                    <Step num="2" title="Tabela ABASTECIMENTOS" desc="O PostoMaster utiliza nomes no plural. Sua query deve ser 'SELECT * FROM ABASTECIMENTOS'." />
+                    <Step num="3" title="Node.js Rodando" desc="Garanta que o Agente Local (bridge.js) esteja ativo no seu terminal agora." />
                   </div>
 
                   <div className="mt-10 p-6 rounded-2xl bg-slate-800 border border-slate-700">
-                    <p className="text-[10px] font-black text-blue-400 uppercase mb-3">Linha de comando recomendada:</p>
+                    <p className="text-[10px] font-black text-blue-400 uppercase mb-3">Query Recomendada para o bridge.js:</p>
                     <code className="text-[11px] font-mono text-slate-300 block bg-black/40 p-4 rounded-xl leading-relaxed">
-                      // No seu bridge.js, a senha deve ser:<br/>
-                      password: 'masterkey'
+                      const sql = "SELECT * FROM ABASTECIMENTOS ORDER BY DT_CAIXA DESC";<br/>
+                      // Senha: masterkey
                     </code>
                   </div>
                 </div>
