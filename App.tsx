@@ -48,7 +48,7 @@ export default function App() {
   
   const [dbConfig, setDbConfig] = useState<DBConfig>({
     host: 'localhost',
-    path: 'C:\\PostoMaster\\BD\\DADOS.FDB',
+    path: 'C:\\ACS\\sintese\\pdv\\CAIXA.FDB',
     port: 3050,
     status: 'disconnected'
   });
@@ -384,29 +384,44 @@ export default function App() {
                     <p className="text-xs font-mono font-bold text-slate-700 break-all">{dbConfig.path}</p>
                   </div>
 
-                  <button 
-                    onClick={handleConnect}
-                    disabled={isConnecting}
-                    className="flex w-full items-center justify-center gap-3 rounded-3xl bg-blue-600 py-5 text-sm font-black uppercase tracking-widest text-white shadow-xl hover:bg-blue-500 transition-all disabled:opacity-50"
-                  >
-                    {isConnecting ? <RefreshCcw size={20} className="animate-spin" /> : <Zap size={20} />}
-                    {isConnecting ? 'Sincronizando...' : 'Conectar Agora'}
-                  </button>
+                  <div className="hidden">
+                    <input type="file" ref={fileInputRef} accept=".fdb" onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if(f) setDbConfig({...dbConfig, path: `C:\\ACS\\sintese\\pdv\\${f.name}`});
+                    }} />
+                  </div>
+
+                  <div className="flex gap-4">
+                    <button 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center justify-center gap-3 rounded-3xl bg-slate-100 px-6 py-5 text-sm font-black uppercase tracking-widest text-slate-600 border border-slate-200 hover:bg-slate-200 transition-all"
+                    >
+                      <FolderOpen size={20} /> Selecionar Arquivo
+                    </button>
+                    <button 
+                      onClick={handleConnect}
+                      disabled={isConnecting}
+                      className="flex-1 flex items-center justify-center gap-3 rounded-3xl bg-blue-600 py-5 text-sm font-black uppercase tracking-widest text-white shadow-xl hover:bg-blue-500 transition-all disabled:opacity-50"
+                    >
+                      {isConnecting ? <RefreshCcw size={20} className="animate-spin" /> : <Zap size={20} />}
+                      {isConnecting ? 'Sincronizando...' : 'Conectar Agora'}
+                    </button>
+                  </div>
                 </div>
               </div>
 
               <div className="rounded-[2.5rem] border border-slate-200 bg-slate-900 p-10 text-white shadow-sm relative overflow-hidden">
                 <div className="relative z-10">
-                  <h3 className="text-xl font-black mb-6 uppercase text-blue-400 tracking-tighter">Lembrete de Importação (20 Dias)</h3>
+                  <h3 className="text-xl font-black mb-6 uppercase text-blue-400 tracking-tighter">Diretório ACS Sintese Ativo</h3>
                   
                   <div className="space-y-6">
-                    <Step num="1" title="Verifique o Filtro" desc="O Dashboard exibe por padrão registros dos últimos 20 dias." />
-                    <Step num="2" title="SQL do bridge.js" desc="Certifique-se que o seu código local está buscando o campo DT_CAIXA." />
-                    <Step num="3" title="Tabelas Plurais" desc="As tabelas DEVEM ser ABASTECIMENTOS e FUNCIONARIOS." />
+                    <Step num="1" title="Caminho do PDV" desc="O sistema está configurado para buscar em C:\ACS\sintese\pdv\." />
+                    <Step num="2" title="Arquivo de Dados" desc="O nome padrão esperado é CAIXA.FDB." />
+                    <Step num="3" title="Permissões de Rede" desc="Certifique-se que o Agente bridge.js tem acesso total a esta pasta." />
                   </div>
 
                   <div className="mt-10 p-6 rounded-2xl bg-slate-800 border border-slate-700">
-                    <p className="text-[10px] font-black text-emerald-400 uppercase mb-3 font-mono">Query Correta para bridge.js:</p>
+                    <p className="text-[10px] font-black text-emerald-400 uppercase mb-3 font-mono">Query Recomendada:</p>
                     <code className="text-[11px] font-mono text-slate-300 block bg-black/40 p-4 rounded-xl leading-relaxed whitespace-pre">
                       {"SELECT a.*, f.apelido"} <br/>
                       {"FROM ABASTECIMENTOS a"} <br/>
