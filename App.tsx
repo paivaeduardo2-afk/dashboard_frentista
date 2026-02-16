@@ -9,15 +9,16 @@ import {
   ArrowUpRight, 
   RefreshCcw,
   Download,
-  CalendarDays,
-  AlertCircle,
   Search,
   FolderOpen,
   Zap,
   Server,
   XCircle,
-  AlertTriangle,
-  Info
+  Info,
+  ChevronDown,
+  ChevronRight,
+  ArrowUpDown,
+  User
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -37,6 +38,9 @@ import { JoinData, DBConfig, DashboardStats, ChartDataItem, FuelChartItem } from
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
 
+type SortField = 'cod_bico' | 'total';
+type SortOrder = 'asc' | 'desc';
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'history' | 'settings'>('dashboard');
   const [data, setData] = useState<JoinData[]>([]);
@@ -44,6 +48,9 @@ export default function App() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [bridgeStatus, setBridgeStatus] = useState<'online' | 'offline' | 'checking'>('checking');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [expandedAttendant, setExpandedAttendant] = useState<string | null>(null);
+  const [detailSort, setDetailSort] = useState<{field: SortField, order: SortOrder}>({ field: 'total', order: 'desc' });
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [dbConfig, setDbConfig] = useState<DBConfig>({
@@ -53,7 +60,6 @@ export default function App() {
     status: 'disconnected'
   });
 
-  // Garante o filtro de exatos 20 dias atrás
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 20); 
@@ -126,7 +132,6 @@ export default function App() {
     if (!dateStr) return null;
     let d = new Date(dateStr);
     if (!isNaN(d.getTime())) return d;
-    
     if (dateStr.includes('.')) {
       const parts = dateStr.split('.');
       if (parts.length === 3) {
@@ -144,9 +149,40 @@ export default function App() {
       
       const start = new Date(startDate + 'T00:00:00');
       const end = new Date(endDate + 'T23:59:59');
-      return itemDate >= start && itemDate <= end;
+      const matchesDate = itemDate >= start && itemDate <= end;
+
+      const searchLower = searchTerm.toLowerCase();
+      const matchesSearch = 
+        item.apelido.toLowerCase().includes(searchLower) ||
+        item.tipo_combustivel.toLowerCase().includes(searchLower) ||
+        item.cod_bico.toLowerCase().includes(searchLower);
+
+      return matchesDate && matchesSearch;
     });
-  }, [data, startDate, endDate]);
+  }, [data, startDate, endDate, searchTerm]);
+
+  const groupedByAttendant = useMemo(() => {
+    const groups: Record<string, { 
+      name: string, 
+      total: number, 
+      litros: number, 
+      count: number,
+      sales: JoinData[] 
+    }> = {};
+
+    filteredData.forEach(item => {
+      const name = item.apelido || 'DESCONHECIDO';
+      if (!groups[name]) {
+        groups[name] = { name, total: 0, litros: 0, count: 0, sales: [] };
+      }
+      groups[name].total += (Number(item.total) || 0);
+      groups[name].litros += (Number(item.litros) || 0);
+      groups[name].count += 1;
+      groups[name].sales.push(item);
+    });
+
+    return Object.values(groups).sort((a, b) => b.total - a.total);
+  }, [filteredData]);
 
   const stats = useMemo((): DashboardStats => {
     const totalRevenue = filteredData.reduce((acc, curr) => acc + (Number(curr.total) || 0), 0);
@@ -160,15 +196,12 @@ export default function App() {
   }, [filteredData]);
 
   const chartDataByFrentista = useMemo((): ChartDataItem[] => {
-    const grouped: Record<string, ChartDataItem> = {};
-    filteredData.forEach(curr => {
-      const name = curr.apelido || 'OUTROS';
-      if (!grouped[name]) grouped[name] = { name, total: 0, litros: 0 };
-      grouped[name].total += (Number(curr.total) || 0);
-      grouped[name].litros += (Number(curr.litros) || 0);
-    });
-    return Object.values(grouped).sort((a, b) => b.total - a.total);
-  }, [filteredData]);
+    return groupedByAttendant.map(g => ({
+      name: g.name,
+      total: g.total,
+      litros: g.litros
+    })).slice(0, 10);
+  }, [groupedByAttendant]);
 
   const chartDataByFuel = useMemo((): FuelChartItem[] => {
     const grouped: Record<string, FuelChartItem> = {};
@@ -180,12 +213,33 @@ export default function App() {
     return Object.values(grouped);
   }, [filteredData]);
 
+  const toggleSort = (field: SortField) => {
+    setDetailSort(prev => ({
+      field,
+      order: prev.field === field && prev.order === 'desc' ? 'asc' : 'desc'
+    }));
+  };
+
+  const getSortedSales = (sales: JoinData[]) => {
+    return [...sales].sort((a, b) => {
+      let valA = a[detailSort.field];
+      let valB = b[detailSort.field];
+      
+      if (typeof valA === 'string') valA = valA.toLowerCase();
+      if (typeof valB === 'string') valB = valB.toLowerCase();
+
+      if (valA < valB) return detailSort.order === 'asc' ? -1 : 1;
+      if (valA > valB) return detailSort.order === 'asc' ? 1 : -1;
+      return 0;
+    });
+  };
+
   if (loading && !isConnecting) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50">
         <div className="text-center">
           <RefreshCcw size={40} className="mx-auto mb-4 animate-spin text-blue-600" />
-          <p className="text-xs font-black text-slate-400 uppercase tracking-widest text-center">Acessando Banco Local...</p>
+          <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Acessando Banco Local...</p>
         </div>
       </div>
     );
@@ -223,7 +277,7 @@ export default function App() {
         <header className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white/80 px-8 py-4 backdrop-blur-md">
           <div className="flex flex-col">
             <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">
-              {activeTab === 'dashboard' ? 'Painel de Gestão' : activeTab === 'history' ? 'Histórico de Vendas' : 'Conexão Firebird'}
+              {activeTab === 'dashboard' ? 'Painel de Gestão' : activeTab === 'history' ? 'Transações por Frentista' : 'Conexão Firebird'}
             </h2>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-black text-blue-600 uppercase">
@@ -236,11 +290,6 @@ export default function App() {
           </div>
           
           <div className="flex items-center gap-4">
-             {bridgeStatus === 'offline' && (
-               <div className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-1.5 text-[9px] font-black uppercase text-amber-600 border border-amber-100">
-                 <AlertCircle size={14} /> Modo Demonstração
-               </div>
-             )}
              <div className="flex items-center gap-4 rounded-full border border-slate-200 bg-white px-4 py-2 shadow-sm">
                 <div className="flex items-center gap-2 border-r border-slate-100 pr-4">
                   <span className="text-[9px] font-black text-slate-400 uppercase">Início</span>
@@ -255,21 +304,6 @@ export default function App() {
         </header>
 
         <div className="mx-auto max-w-7xl space-y-8 p-8">
-          {data.length === 0 && !loading && (
-            <div className="rounded-[2.5rem] border-2 border-dashed border-slate-200 bg-white p-20 text-center">
-              <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-                <Database size={40} />
-              </div>
-              <h3 className="text-2xl font-black text-slate-800 uppercase">Nenhum dado importado</h3>
-              <p className="mx-auto mt-2 max-w-md text-sm font-medium text-slate-400 leading-relaxed">
-                O sistema conectou, mas não há dados. Verifique sua query no <b>bridge.js</b>.
-              </p>
-              <button onClick={handleConnect} className="mt-8 inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-8 py-4 text-xs font-black uppercase tracking-widest text-white shadow-xl hover:bg-blue-500">
-                <RefreshCcw size={16} /> Sincronizar Agora
-              </button>
-            </div>
-          )}
-
           {activeTab === 'dashboard' && filteredData.length > 0 && (
             <>
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -281,7 +315,7 @@ export default function App() {
 
               <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
                 <div className="rounded-[2.5rem] border border-slate-100 bg-white p-8 shadow-sm h-[400px]">
-                  <h3 className="mb-6 text-lg font-black text-slate-800 uppercase tracking-tighter">Desempenho por Operador</h3>
+                  <h3 className="mb-6 text-lg font-black text-slate-800 uppercase tracking-tighter">Ranking de Vendas</h3>
                   <div className="h-64">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={chartDataByFrentista} layout="vertical">
@@ -314,43 +348,117 @@ export default function App() {
           )}
 
           {activeTab === 'history' && (
-            <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-              <div className="bg-slate-50 border-b border-slate-200 p-6">
-                <div className="flex items-center justify-between">
-                   <div className="relative w-72">
-                      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                      <input type="text" placeholder="Pesquisar..." className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-4 text-xs font-bold outline-none" />
-                   </div>
-                   <button className="flex items-center gap-2 text-xs font-black uppercase text-blue-600">
-                      <Download size={16} /> Exportar CSV
-                   </button>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-4 bg-white p-4 rounded-3xl border border-slate-200 shadow-sm">
+                <div className="relative flex-1 max-w-md">
+                   <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                   <input 
+                    type="text" 
+                    placeholder="Pesquisar por Frentista, Bico ou Combustível..." 
+                    className="w-full rounded-2xl border-none bg-slate-50 py-3 pl-12 pr-4 text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-blue-500"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                   />
                 </div>
+                <button className="hidden sm:flex items-center gap-2 rounded-2xl bg-blue-50 px-6 py-3 text-xs font-black uppercase text-blue-600 hover:bg-blue-100 transition-colors">
+                  <Download size={16} /> Exportar Relatório
+                </button>
               </div>
-              <div className="overflow-x-auto max-h-[600px]">
+
+              <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                 <table className="w-full text-left">
-                  <thead className="sticky top-0 bg-slate-50 z-10">
-                    <tr>
-                      <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest">Data</th>
+                  <thead>
+                    <tr className="bg-slate-50">
+                      <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest w-12"></th>
                       <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest">Frentista</th>
-                      <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest">Produto</th>
-                      <th className="px-6 py-4 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Litros</th>
-                      <th className="px-6 py-4 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Total</th>
+                      <th className="px-6 py-4 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Abastecimentos</th>
+                      <th className="px-6 py-4 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Litros Totais</th>
+                      <th className="px-6 py-4 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Valor Acumulado</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredData.slice(0, 100).map((row, i) => (
-                      <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-6 py-4 font-mono text-[11px] font-bold text-slate-500">
-                          {parseFirebirdDate(row.dt_caixa)?.toLocaleDateString('pt-BR') || '-'}
-                        </td>
-                        <td className="px-6 py-4 text-xs font-black text-slate-800">{row.apelido}</td>
-                        <td className="px-6 py-4"><span className="rounded bg-blue-50 px-2 py-1 text-[9px] font-black text-blue-600 uppercase">{row.tipo_combustivel}</span></td>
-                        <td className="px-6 py-4 text-right font-mono text-xs font-bold text-slate-600">{(Number(row.litros) || 0).toFixed(2)}</td>
-                        <td className="px-6 py-4 text-right text-xs font-black text-emerald-600">R$ {(Number(row.total) || 0).toFixed(2)}</td>
-                      </tr>
+                    {groupedByAttendant.map((group) => (
+                      <React.Fragment key={group.name}>
+                        <tr 
+                          onClick={() => setExpandedAttendant(expandedAttendant === group.name ? null : group.name)}
+                          className="cursor-pointer hover:bg-slate-50/80 transition-all group"
+                        >
+                          <td className="px-6 py-4 text-center">
+                            {expandedAttendant === group.name ? <ChevronDown size={18} className="text-blue-600" /> : <ChevronRight size={18} className="text-slate-300 group-hover:text-blue-400" />}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
+                                <User size={16} />
+                              </div>
+                              <span className="text-xs font-black text-slate-800 uppercase tracking-tight">{group.name}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-right font-mono text-xs font-bold text-slate-500">{group.count}</td>
+                          <td className="px-6 py-4 text-right font-mono text-xs font-bold text-slate-600">{group.litros.toFixed(2)} L</td>
+                          <td className="px-6 py-4 text-right text-sm font-black text-blue-600">R$ {group.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                        </tr>
+                        
+                        {expandedAttendant === group.name && (
+                          <tr>
+                            <td colSpan={5} className="bg-slate-50/50 px-8 py-6">
+                              <div className="rounded-2xl border border-blue-100 bg-white shadow-lg overflow-hidden">
+                                <div className="flex items-center justify-between bg-blue-50/30 px-6 py-3 border-b border-blue-100">
+                                  <h4 className="text-[10px] font-black uppercase text-blue-800">Detalhamento Individual: {group.name}</h4>
+                                  <div className="flex gap-4">
+                                    <button 
+                                      onClick={() => toggleSort('cod_bico')}
+                                      className={`flex items-center gap-1 text-[9px] font-black uppercase ${detailSort.field === 'cod_bico' ? 'text-blue-600' : 'text-slate-400'}`}
+                                    >
+                                      Bico <ArrowUpDown size={12} />
+                                    </button>
+                                    <button 
+                                      onClick={() => toggleSort('total')}
+                                      className={`flex items-center gap-1 text-[9px] font-black uppercase ${detailSort.field === 'total' ? 'text-blue-600' : 'text-slate-400'}`}
+                                    >
+                                      Valor <ArrowUpDown size={12} />
+                                    </button>
+                                  </div>
+                                </div>
+                                <table className="w-full text-left">
+                                  <thead>
+                                    <tr className="border-b border-slate-50">
+                                      <th className="px-6 py-3 text-[9px] font-black uppercase text-slate-400 tracking-tighter">Bico</th>
+                                      <th className="px-6 py-3 text-[9px] font-black uppercase text-slate-400 tracking-tighter">Combustível</th>
+                                      <th className="px-6 py-3 text-[9px] font-black uppercase text-slate-400 tracking-tighter">Data</th>
+                                      <th className="px-6 py-3 text-right text-[9px] font-black uppercase text-slate-400 tracking-tighter">Preço (R$)</th>
+                                      <th className="px-6 py-3 text-right text-[9px] font-black uppercase text-slate-400 tracking-tighter">Litros</th>
+                                      <th className="px-6 py-3 text-right text-[9px] font-black uppercase text-slate-400 tracking-tighter">Total (R$)</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-50">
+                                    {getSortedSales(group.sales).map((sale, idx) => (
+                                      <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                                        <td className="px-6 py-3 font-mono text-[10px] font-black text-slate-400">{sale.cod_bico}</td>
+                                        <td className="px-6 py-3"><span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 uppercase">{sale.tipo_combustivel}</span></td>
+                                        <td className="px-6 py-3 text-[10px] font-bold text-slate-400">
+                                          {parseFirebirdDate(sale.dt_caixa)?.toLocaleDateString('pt-BR')}
+                                        </td>
+                                        <td className="px-6 py-3 text-right font-mono text-[10px] text-slate-500">{sale.preco.toFixed(3)}</td>
+                                        <td className="px-6 py-3 text-right font-mono text-[10px] font-bold text-slate-600">{sale.litros.toFixed(2)}</td>
+                                        <td className="px-6 py-3 text-right text-xs font-black text-emerald-600">R$ {sale.total.toFixed(2)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
+                {groupedByAttendant.length === 0 && (
+                  <div className="p-12 text-center">
+                    <p className="text-sm font-black text-slate-400 uppercase tracking-widest">Nenhuma venda encontrada para os filtros aplicados</p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -380,7 +488,7 @@ export default function App() {
 
                 <div className="space-y-6">
                   <div className="rounded-2xl bg-slate-50 p-6 border border-slate-100">
-                    <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Caminho do Banco</p>
+                    <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Caminho do Banco Ativo</p>
                     <p className="text-xs font-mono font-bold text-slate-700 break-all">{dbConfig.path}</p>
                   </div>
 
@@ -396,7 +504,7 @@ export default function App() {
                       onClick={() => fileInputRef.current?.click()}
                       className="flex items-center justify-center gap-3 rounded-3xl bg-slate-100 px-6 py-5 text-sm font-black uppercase tracking-widest text-slate-600 border border-slate-200 hover:bg-slate-200 transition-all"
                     >
-                      <FolderOpen size={20} /> Selecionar Arquivo
+                      <FolderOpen size={20} /> Mudar Banco
                     </button>
                     <button 
                       onClick={handleConnect}
