@@ -53,6 +53,7 @@ export default function App() {
     status: 'disconnected'
   });
 
+  // Garante o filtro de exatos 20 dias atrás
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 20); 
@@ -123,11 +124,9 @@ export default function App() {
 
   const parseFirebirdDate = (dateStr: string) => {
     if (!dateStr) return null;
-    // Tenta ISO primeiro
     let d = new Date(dateStr);
     if (!isNaN(d.getTime())) return d;
     
-    // Tenta formato brasileiro comum em Firebird se falhar
     if (dateStr.includes('.')) {
       const parts = dateStr.split('.');
       if (parts.length === 3) {
@@ -186,7 +185,7 @@ export default function App() {
       <div className="flex h-screen items-center justify-center bg-slate-50">
         <div className="text-center">
           <RefreshCcw size={40} className="mx-auto mb-4 animate-spin text-blue-600" />
-          <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Acessando Banco Local...</p>
+          <p className="text-xs font-black text-slate-400 uppercase tracking-widest text-center">Acessando Banco Local...</p>
         </div>
       </div>
     );
@@ -408,11 +407,11 @@ export default function App() {
 
                   <div className="mt-10 p-6 rounded-2xl bg-slate-800 border border-slate-700">
                     <p className="text-[10px] font-black text-emerald-400 uppercase mb-3 font-mono">Query Correta para bridge.js:</p>
-                    <code className="text-[11px] font-mono text-slate-300 block bg-black/40 p-4 rounded-xl leading-relaxed">
-                      SELECT a.*, f.apelido <br/>
-                      FROM ABASTECIMENTOS a <br/>
-                      LEFT JOIN FUNCIONARIOS f ON a.id_cartao_frentista = f.id_cartao_abast <br/>
-                      WHERE a.dt_caixa >= 'now' - 20
+                    <code className="text-[11px] font-mono text-slate-300 block bg-black/40 p-4 rounded-xl leading-relaxed whitespace-pre">
+                      {"SELECT a.*, f.apelido"} <br/>
+                      {"FROM ABASTECIMENTOS a"} <br/>
+                      {"LEFT JOIN FUNCIONARIOS f ON a.id_cartao_frentista = f.id_cartao_abast"} <br/>
+                      {"WHERE a.dt_caixa >= 'now' - 20"}
                     </code>
                   </div>
                 </div>
