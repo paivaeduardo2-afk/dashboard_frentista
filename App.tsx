@@ -19,7 +19,8 @@ import {
   Terminal,
   Code,
   XCircle,
-  AlertTriangle
+  AlertTriangle,
+  Info
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -36,7 +37,6 @@ import {
 } from 'recharts';
 import { getJoinedData } from './services/mockData';
 import { JoinData, DBConfig, DashboardStats, ChartDataItem, FuelChartItem } from './types';
-import { GoogleGenAI } from "@google/genai";
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
 
@@ -56,9 +56,10 @@ export default function App() {
     status: 'disconnected'
   });
 
+  // Alterado para 20 dias conforme solicitado
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
-    d.setDate(d.getDate() - 7);
+    d.setDate(d.getDate() - 20); 
     return d.toISOString().split('T')[0];
   });
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -105,12 +106,14 @@ export default function App() {
       const response = await fetch('http://localhost:3001/api/data');
       if (!response.ok) {
         const errData = await response.json();
-        // Captura o erro específico de tabela desconhecida com erro de digitação
-        const rawError = errData.error || "Erro ao ler banco Firebird";
-        throw new Error(rawError);
+        throw new Error(errData.error || "Erro ao ler banco Firebird");
       }
 
       const realData = await response.json();
+      if (!Array.isArray(realData)) {
+        throw new Error("O banco retornou um formato inválido. Esperado uma lista de registros.");
+      }
+
       setData(realData);
       setDbConfig(prev => ({ ...prev, status: 'connected' }));
       setActiveTab('dashboard');
@@ -124,7 +127,9 @@ export default function App() {
 
   const filteredData = useMemo(() => {
     return data.filter(item => {
-      const itemDate = new Date(item.dt_caixa + 'T00:00:00');
+      if (!item.dt_caixa) return false;
+      // Garante que a data seja lida corretamente mesmo que venha em formatos diferentes
+      const itemDate = new Date(item.dt_caixa.includes('T') ? item.dt_caixa : item.dt_caixa + 'T00:00:00');
       const start = new Date(startDate + 'T00:00:00');
       const end = new Date(endDate + 'T23:59:59');
       return itemDate >= start && itemDate <= end;
@@ -132,8 +137,8 @@ export default function App() {
   }, [data, startDate, endDate]);
 
   const stats = useMemo((): DashboardStats => {
-    const totalRevenue = filteredData.reduce((acc, curr) => acc + curr.total, 0);
-    const totalLiters = filteredData.reduce((acc, curr) => acc + curr.litros, 0);
+    const totalRevenue = filteredData.reduce((acc, curr) => acc + (curr.total || 0), 0);
+    const totalLiters = filteredData.reduce((acc, curr) => acc + (curr.litros || 0), 0);
     return {
       totalRevenue,
       totalLiters,
@@ -147,7 +152,7 @@ export default function App() {
     filteredData.forEach(curr => {
       const name = curr.apelido || 'OUTROS';
       if (!grouped[name]) grouped[name] = { name, total: 0, litros: 0 };
-      grouped[name].total += curr.total;
+      grouped[name].total += (curr.total || 0);
     });
     return Object.values(grouped).sort((a, b) => b.total - a.total);
   }, [filteredData]);
@@ -157,17 +162,10 @@ export default function App() {
     filteredData.forEach(curr => {
       const name = curr.tipo_combustivel || 'OUTROS';
       if (!grouped[name]) grouped[name] = { name, value: 0 };
-      grouped[name].value += curr.total;
+      grouped[name].value += (curr.total || 0);
     });
     return Object.values(grouped);
   }, [filteredData]);
-
-  // Função para checar se houve erro de digitação na tabela
-  const checkTypoError = (msg: string) => {
-    if (msg.includes('ABASTECIMENTOSS')) return 'TABELA COM "S" A MAIS: Verifique ABASTECIMENTOSS no bridge.js';
-    if (msg.includes('FUNCIONARIOSS')) return 'TABELA COM "S" A MAIS: Verifique FUNCIONARIOSS no bridge.js';
-    return null;
-  };
 
   if (loading && !isConnecting) {
     return (
@@ -210,24 +208,66 @@ export default function App() {
 
       <main className="flex-1 overflow-y-auto">
         <header className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white/80 px-8 py-4 backdrop-blur-md">
-          <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">
-            {activeTab === 'dashboard' ? 'Painel de Gestão' : activeTab === 'history' ? 'Histórico de Vendas' : 'Conexão Firebird'}
-          </h2>
+          <div className="flex flex-col">
+            <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">
+              {activeTab === 'dashboard' ? 'Painel de Gestão' : activeTab === 'history' ? 'Histórico de Vendas' : 'Conexão Firebird'}
+            </h2>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-black text-blue-600 uppercase">
+                <Database size={10} /> {data.length} Total
+              </span>
+              <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-black text-emerald-600 uppercase">
+                <Info size={10} /> {filteredData.length} no Período
+              </span>
+            </div>
+          </div>
+          
           <div className="flex items-center gap-4">
              {bridgeStatus === 'offline' && (
                <div className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-1.5 text-[9px] font-black uppercase text-amber-600 border border-amber-100">
                  <AlertCircle size={14} /> Modo Demonstração
                </div>
              )}
-             <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 shadow-sm">
-                <CalendarDays size={14} className="text-blue-600" />
-                <span className="text-[10px] font-black uppercase text-slate-600">{startDate} — {endDate}</span>
+             <div className="flex items-center gap-4 rounded-full border border-slate-200 bg-white px-4 py-2 shadow-sm">
+                <div className="flex items-center gap-2 border-r border-slate-100 pr-4">
+                  <span className="text-[9px] font-black text-slate-400 uppercase">Início</span>
+                  <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="text-[10px] font-black text-blue-600 outline-none" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] font-black text-slate-400 uppercase">Fim</span>
+                  <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="text-[10px] font-black text-blue-600 outline-none" />
+                </div>
              </div>
           </div>
         </header>
 
         <div className="mx-auto max-w-7xl space-y-8 p-8">
-          {activeTab === 'dashboard' && (
+          {data.length === 0 && !loading && (
+            <div className="rounded-[2.5rem] border-2 border-dashed border-slate-200 bg-white p-20 text-center">
+              <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                <Database size={40} />
+              </div>
+              <h3 className="text-2xl font-black text-slate-800 uppercase">Nenhum dado importado</h3>
+              <p className="mx-auto mt-2 max-w-md text-sm font-medium text-slate-400 leading-relaxed">
+                O sistema conectou, mas a tabela <b>ABASTECIMENTOS</b> parece estar vazia ou a query no <b>bridge.js</b> não está retornando dados.
+              </p>
+              <button onClick={handleConnect} className="mt-8 inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-8 py-4 text-xs font-black uppercase tracking-widest text-white shadow-xl hover:bg-blue-500">
+                <RefreshCcw size={16} /> Tentar Sincronizar Novamente
+              </button>
+            </div>
+          )}
+
+          {data.length > 0 && filteredData.length === 0 && (
+            <div className="rounded-[2.5rem] border border-amber-100 bg-amber-50/50 p-12 text-center">
+              <AlertTriangle className="mx-auto mb-4 text-amber-500" size={48} />
+              <h3 className="text-xl font-black text-amber-800 uppercase">Nenhum dado nos últimos 20 dias</h3>
+              <p className="mt-2 text-sm text-amber-600">
+                Importamos {data.length} registros no total, mas nenhum corresponde ao filtro de datas selecionado.
+              </p>
+            </div>
+          )}
+
+          {activeTab === 'dashboard' && filteredData.length > 0 && (
             <>
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
                 <MetricCard title="Vendas Totais" value={`R$ ${stats.totalRevenue.toLocaleString()}`} icon={<TrendingUp />} color="blue" />
@@ -297,11 +337,13 @@ export default function App() {
                   <tbody className="divide-y divide-slate-100">
                     {filteredData.slice(0, 100).map((row, i) => (
                       <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-6 py-4 font-mono text-[11px] font-bold text-slate-500">{new Date(row.dt_caixa).toLocaleDateString('pt-BR')}</td>
+                        <td className="px-6 py-4 font-mono text-[11px] font-bold text-slate-500">
+                          {row.dt_caixa ? new Date(row.dt_caixa.includes('T') ? row.dt_caixa : row.dt_caixa + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
+                        </td>
                         <td className="px-6 py-4 text-xs font-black text-slate-800">{row.apelido}</td>
                         <td className="px-6 py-4"><span className="rounded bg-blue-50 px-2 py-1 text-[9px] font-black text-blue-600 uppercase">{row.tipo_combustivel}</span></td>
-                        <td className="px-6 py-4 text-right font-mono text-xs font-bold text-slate-600">{row.litros.toFixed(2)}</td>
-                        <td className="px-6 py-4 text-right text-xs font-black text-emerald-600">R$ {row.total.toFixed(2)}</td>
+                        <td className="px-6 py-4 text-right font-mono text-xs font-bold text-slate-600">{(row.litros || 0).toFixed(2)}</td>
+                        <td className="px-6 py-4 text-right text-xs font-black text-emerald-600">R$ {(row.total || 0).toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -332,17 +374,6 @@ export default function App() {
                           <p className="text-[11px] font-bold leading-relaxed">{errorMessage}</p>
                         </div>
                       </div>
-                      
-                      {checkTypoError(errorMessage) && (
-                        <div className="rounded-xl bg-red-600 p-4 text-white shadow-lg animate-pulse">
-                          <div className="flex items-center gap-2 mb-1">
-                            <AlertTriangle size={16} />
-                            <span className="text-[10px] font-black uppercase">Correção Necessária Agora</span>
-                          </div>
-                          <p className="text-[11px] font-bold">{checkTypoError(errorMessage)}</p>
-                          <p className="mt-2 text-[10px] opacity-80">Você digitou dois "S" no final de ABASTECIMENTOS no seu arquivo bridge.js.</p>
-                        </div>
-                      )}
                    </div>
                 )}
 
@@ -377,25 +408,26 @@ export default function App() {
 
               <div className="rounded-[2.5rem] border border-slate-200 bg-slate-900 p-10 text-white shadow-sm relative overflow-hidden">
                 <div className="relative z-10">
-                  <h3 className="text-xl font-black mb-6 uppercase text-blue-400">Correção do Erro -204</h3>
+                  <h3 className="text-xl font-black mb-6 uppercase text-blue-400">Importação dos Últimos 20 Dias</h3>
                   
                   <div className="space-y-6">
-                    <Step num="1" title="Tabelas no Plural" desc="Nomes corretos: ABASTECIMENTOS e FUNCIONARIOS (Um único 'S' no final)." />
-                    <Step num="2" title="Cuidado com Typos" desc="Seu erro atual indica 'ABASTECIMENTOSS' (Dois 'S'). Remova o 'S' extra no seu bridge.js." />
-                    <Step num="3" title="SQL Correto" desc="Use EXATAMENTE a query abaixo no seu arquivo local." />
+                    <Step num="1" title="Filtro de Data Ativo" desc="O Dashboard agora solicita por padrão dados dos últimos 20 dias." />
+                    <Step num="2" title="Otimização no Agente" desc="Se não estiver importando nada, altere o seu arquivo bridge.js para buscar apenas o período recente." />
+                    <Step num="3" title="SQL Sugerido (V20)" desc="Use a query abaixo para filtrar direto no servidor Firebird." />
                   </div>
 
                   <div className="mt-10 p-6 rounded-2xl bg-slate-800 border border-slate-700">
-                    <p className="text-[10px] font-black text-emerald-400 uppercase mb-3 font-mono tracking-tighter">Copie este SQL para o bridge.js:</p>
-                    <code className="text-[11px] font-mono text-slate-300 block bg-black/40 p-4 rounded-xl leading-relaxed">
+                    <p className="text-[10px] font-black text-emerald-400 uppercase mb-3 font-mono tracking-tighter">Query Otimizada para o bridge.js:</p>
+                    <code className="text-[11px] font-mono text-slate-300 block bg-black/40 p-4 rounded-xl leading-relaxed whitespace-pre">
                       SELECT a.*, f.apelido <br/>
                       FROM <span className="text-emerald-400 font-black">ABASTECIMENTOS</span> a <br/>
                       LEFT JOIN <span className="text-emerald-400 font-black">FUNCIONARIOS</span> f <br/>
                       ON a.id_cartao_frentista = f.id_cartao_abast <br/>
+                      <span className="text-blue-400 font-black">WHERE a.dt_caixa >= 'now' - 20</span> <br/>
                       ORDER BY a.dt_caixa DESC
                     </code>
                   </div>
-                  <p className="mt-4 text-[10px] font-bold text-slate-500 italic uppercase">Dica: Após corrigir no bridge.js, salve o arquivo e reinicie o comando 'node bridge.js'.</p>
+                  <p className="mt-4 text-[10px] font-bold text-slate-500 italic uppercase">Nota: O comando 'now' - 20 no Firebird pega automaticamente os últimos 20 dias.</p>
                 </div>
               </div>
             </div>
