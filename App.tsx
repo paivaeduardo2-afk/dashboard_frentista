@@ -161,24 +161,6 @@ export default function App() {
     return Object.values(grouped);
   }, [filteredData]);
 
-  const generateAIInsight = async () => {
-    if (!process.env.API_KEY) return;
-    setGeneratingInsight(true);
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const summary = `Dashboard Posto: R$ ${stats.totalRevenue.toFixed(2)} em vendas. Principal operador: ${chartDataByFrentista[0]?.name || 'N/A'}.`;
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Com base nesses dados de um posto de combustível, dê uma dica estratégica de 1 frase: ${summary}`
-      });
-      setAiInsight(response.text || '');
-    } catch (err) {
-      setAiInsight('IA indisponível no momento.');
-    } finally {
-      setGeneratingInsight(false);
-    }
-  };
-
   if (loading && !isConnecting) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50">
@@ -339,7 +321,7 @@ export default function App() {
                       <div>
                         <p className="text-xs font-black uppercase mb-1">Erro Detectado</p>
                         <p className="text-[11px] font-bold leading-relaxed">{errorMessage}</p>
-                        <p className="mt-3 text-[10px] font-black text-red-400 uppercase">Atenção: A tabela correta deve ser ABASTECIMENTOS (Plural).</p>
+                        <p className="mt-3 text-[10px] font-black text-red-400 uppercase">Atenção: Use as tabelas no plural: ABASTECIMENTOS e FUNCIONARIOS.</p>
                       </div>
                    </div>
                 )}
@@ -375,19 +357,22 @@ export default function App() {
 
               <div className="rounded-[2.5rem] border border-slate-200 bg-slate-900 p-10 text-white shadow-sm relative overflow-hidden">
                 <div className="relative z-10">
-                  <h3 className="text-xl font-black mb-6 uppercase">Configuração Confirmada</h3>
+                  <h3 className="text-xl font-black mb-6 uppercase">Padrão Firebird PostoMaster</h3>
                   
                   <div className="space-y-6">
-                    <Step num="1" title="Senha masterkey" desc="Senha oficial configurada no Agente Local: 'masterkey'." />
-                    <Step num="2" title="Tabela ABASTECIMENTOS" desc="O PostoMaster utiliza nomes no plural. Sua query deve ser 'SELECT * FROM ABASTECIMENTOS'." />
-                    <Step num="3" title="Node.js Rodando" desc="Garanta que o Agente Local (bridge.js) esteja ativo no seu terminal agora." />
+                    <Step num="1" title="Senha masterkey" desc="Senha oficial configurada no Agente Local: 'masterkey' (minúsculo)." />
+                    <Step num="2" title="Tabelas no Plural" desc="O PostoMaster utiliza os nomes no plural: ABASTECIMENTOS e FUNCIONARIOS." />
+                    <Step num="3" title="Relacionamento (Join)" desc="Sua query no bridge.js deve unir as tabelas para mostrar o nome do frentista." />
                   </div>
 
                   <div className="mt-10 p-6 rounded-2xl bg-slate-800 border border-slate-700">
-                    <p className="text-[10px] font-black text-blue-400 uppercase mb-3">Query Recomendada para o bridge.js:</p>
+                    <p className="text-[10px] font-black text-blue-400 uppercase mb-3">Query Completa para o bridge.js:</p>
                     <code className="text-[11px] font-mono text-slate-300 block bg-black/40 p-4 rounded-xl leading-relaxed">
-                      const sql = "SELECT * FROM ABASTECIMENTOS ORDER BY DT_CAIXA DESC";<br/>
-                      // Senha: masterkey
+                      SELECT a.*, f.apelido <br/>
+                      FROM ABASTECIMENTOS a <br/>
+                      LEFT JOIN FUNCIONARIOS f <br/>
+                      ON a.id_cartao_frentista = f.id_cartao_abast <br/>
+                      ORDER BY a.dt_caixa DESC
                     </code>
                   </div>
                 </div>
