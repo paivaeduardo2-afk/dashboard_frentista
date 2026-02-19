@@ -15,9 +15,11 @@ export interface Abastecimento {
 }
 
 export interface Funcionario {
-  id_cartao_abast: string;
+  nome: string;
   apelido: string;
-  nome_completo: string;
+  id_cartao_abast: string;
+  id_cartao_abast_2: string;
+  id_cartao_abast_3: string;
 }
 
 export interface JoinData extends Abastecimento {

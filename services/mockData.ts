@@ -8,32 +8,26 @@ const generateDate = (daysAgo: number) => {
 };
 
 export const MOCK_FUNCIONARIOS: Funcionario[] = [
-  { id_cartao_abast: '1001', apelido: 'Carlos', nome_completo: 'Carlos Silva' },
-  { id_cartao_abast: '1002', apelido: 'Marta', nome_completo: 'Marta Souza' },
-  { id_cartao_abast: '1003', apelido: 'Junior', nome_completo: 'José Junior' },
-  { id_cartao_abast: '1004', apelido: 'Bia', nome_completo: 'Beatriz Lima' },
+  { nome: 'CARLOS AUGUSTO SILVA', apelido: 'Carlos', id_cartao_abast: '1001', id_cartao_abast_2: '2001', id_cartao_abast_3: '' },
+  { nome: 'MARTA SOUZA OLIVEIRA', apelido: 'Marta', id_cartao_abast: '1002', id_cartao_abast_2: '', id_cartao_abast_3: '' },
+  { nome: 'JOSE JUNIOR DOS SANTOS', apelido: 'Junior', id_cartao_abast: '1003', id_cartao_abast_2: '2003', id_cartao_abast_3: '3003' },
+  { nome: 'BEATRIZ LIMA COSTA', apelido: 'Bia', id_cartao_abast: '1004', id_cartao_abast_2: '', id_cartao_abast_3: '' },
 ];
 
-export const MOCK_ABASTECIMENTOS: Abastecimento[] = Array.from({ length: 150 }, (_, i) => {
+export const MOCK_ABASTECIMENTOS: Abastecimento[] = Array.from({ length: 10 }, (_, i) => {
   const frentista = MOCK_FUNCIONARIOS[Math.floor(Math.random() * MOCK_FUNCIONARIOS.length)];
-  const bicos = ['01', '02', '03', '04', '05', '06'];
-  const combustiveis = ['GASOLINA COMUM', 'GASOLINA ADITIVADA', 'ETANOL', 'DIESEL S10'];
-  const preco = 5.89 + (Math.random() * 0.5);
-  const litros = 10 + (Math.random() * 40);
-  const total = preco * litros;
-  
   return {
     nome_operador: 'SISTEMA',
-    tipo_combustivel: combustiveis[Math.floor(Math.random() * combustiveis.length)],
-    cod_bico: bicos[Math.floor(Math.random() * bicos.length)],
-    preco: parseFloat(preco.toFixed(2)),
-    litros: parseFloat(litros.toFixed(3)),
-    total: parseFloat(total.toFixed(2)),
-    afericao: Math.random() > 0.95 ? 'S' : 'N',
-    seq_caixa: 450 + Math.floor(i / 10),
-    dt_caixa: generateDate(Math.floor(Math.random() * 7)),
-    enc_inicial: 1000 + i * 50,
-    enc_final: 1000 + i * 50 + litros,
+    tipo_combustivel: 'GASOLINA',
+    cod_bico: '01',
+    preco: 5.89,
+    litros: 20,
+    total: 117.80,
+    afericao: 'N',
+    seq_caixa: 450,
+    dt_caixa: generateDate(0),
+    enc_inicial: 1000,
+    enc_final: 1020,
     id_cartao_frentista: frentista.id_cartao_abast
   };
 });
