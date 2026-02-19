@@ -13,9 +13,7 @@ import {
   Settings,
   Terminal,
   AlertTriangle,
-  CheckCircle2,
-  Copy,
-  ExternalLink
+  Copy
 } from 'lucide-react';
 import { MOCK_FUNCIONARIOS } from './services/mockData';
 import { Funcionario, DBConfig } from './types';
@@ -37,7 +35,11 @@ export default function App() {
     status: 'disconnected'
   });
 
-  // Código do Bridge para o usuário copiar
+  // Query otimizada para trazer apenas quem tem algum cartão preenchido
+  const sqlFilter = `WHERE (id_cartao_abast IS NOT NULL AND id_cartao_abast <> '') 
+       OR (id_cartao_abast_2 IS NOT NULL AND id_cartao_abast_2 <> '') 
+       OR (id_cartao_abast_3 IS NOT NULL AND id_cartao_abast_3 <> '')`;
+
   const bridgeCode = `const express = require('express');
 const Firebird = require('node-firebird');
 const cors = require('cors');
@@ -48,7 +50,6 @@ app.use(express.json());
 
 app.get('/status', (req, res) => res.send({ status: 'online' }));
 
-// ROTA QUE O DASHBOARD PROCURA
 app.get('/api/employees', (req, res) => {
     const dbPath = req.query.path || 'C:\\\\ACS\\\\sintese\\\\pdv\\\\CAIXA.FDB';
     const options = {
@@ -61,9 +62,13 @@ app.get('/api/employees', (req, res) => {
     };
 
     Firebird.attach(options, (err, db) => {
-        if (err) return res.status(500).send({ error: "Erro ao conectar no FDB: " + err.message });
+        if (err) return res.status(500).send({ error: "Erro Firebird: " + err.message });
         
-        const query = 'SELECT nome, apelido, id_cartao_abast, id_cartao_abast_2, id_cartao_abast_3 FROM FUNCIONARIOS';
+        // Query filtrando apenas quem possui algum cartão
+        const query = \`SELECT nome, apelido, id_cartao_abast, id_cartao_abast_2, id_cartao_abast_3 
+                       FROM FUNCIONARIOS 
+                       ${sqlFilter}\`;
+                       
         db.query(query, (err, result) => {
             db.detach();
             if (err) return res.status(500).send({ error: "Erro na Query: " + err.message });
@@ -76,7 +81,7 @@ app.listen(3001, () => console.log('Agente rodando em http://localhost:3001'));`
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(bridgeCode);
-    alert("Código copiado! Cole no seu arquivo bridge.js");
+    alert("Código copiado! Atualize seu bridge.js e reinicie o servidor.");
   };
 
   const checkBridge = async () => {
@@ -102,32 +107,37 @@ app.listen(3001, () => console.log('Agente rodando em http://localhost:3001'));`
     try {
       const isOnline = await checkBridge();
       if (!isOnline) {
-        throw new Error("Agente Offline: Verifique se o 'node bridge.js' está executando no terminal.");
+        throw new Error("Agente Offline: Inicie o Agente Bridge primeiro.");
       }
 
       const url = `http://localhost:3001/api/employees?path=${encodeURIComponent(dbConfig.path)}`;
-      const response = await fetch(url, { 
-        method: 'GET',
-        mode: 'cors'
-      });
+      const response = await fetch(url, { method: 'GET', mode: 'cors' });
       
       if (response.status === 404) {
-        throw new Error("Erro 404: O seu bridge.js não tem a rota '/api/employees'. Copie o código correto nas configurações.");
+        throw new Error("Erro 404: Rota não encontrada. Atualize o código do bridge.js.");
       }
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "O servidor retornou um erro desconhecido." }));
-        throw new Error(errorData.error || `Erro do Servidor (${response.status})`);
+        const errorData = await response.json().catch(() => ({ error: "Erro desconhecido." }));
+        throw new Error(errorData.error || `Erro (${response.status})`);
       }
 
-      const data = await response.json();
-      setEmployees(data);
+      const data: Funcionario[] = await response.json();
+      
+      // Filtro de segurança no frontend também
+      const filteredData = data.filter(emp => 
+        (emp.id_cartao_abast && emp.id_cartao_abast.trim() !== "") ||
+        (emp.id_cartao_abast_2 && emp.id_cartao_abast_2.trim() !== "") ||
+        (emp.id_cartao_abast_3 && emp.id_cartao_abast_3.trim() !== "")
+      );
+
+      setEmployees(filteredData);
       setDbConfig(prev => ({ ...prev, status: 'connected' }));
-      setErrorMessage(null);
     } catch (err: any) {
-      console.error("Fetch Error:", err);
+      console.error(err);
       setErrorMessage(err.message);
-      setEmployees(MOCK_FUNCIONARIOS); // Fallback
+      // No fallback, apenas mostramos o que tem cartão do mock para exemplo visual
+      setEmployees(MOCK_FUNCIONARIOS.filter(f => f.id_cartao_abast)); 
       setDbConfig(prev => ({ ...prev, status: 'disconnected' }));
     } finally {
       setIsConnecting(false);
@@ -160,7 +170,7 @@ app.listen(3001, () => console.log('Agente rodando em http://localhost:3001'));`
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.setAttribute("download", `EXPORT_FUNCIONARIOS_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`);
+    link.setAttribute("download", `EXPORT_CARTOES_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -172,18 +182,18 @@ app.listen(3001, () => console.log('Agente rodando em http://localhost:3001'));`
         <div className="flex items-center gap-4">
           <div className="bg-blue-600 p-2 rounded-lg"><UserCheck size={22} /></div>
           <div>
-            <h1 className="text-md font-black uppercase tracking-tight">Extração Firebird</h1>
-            <p className="text-[8px] text-blue-400 font-bold uppercase">Tabela: FUNCIONARIOS</p>
+            <h1 className="text-md font-black uppercase tracking-tight">Exportador de Cartões</h1>
+            <p className="text-[8px] text-blue-400 font-bold uppercase">Somente registros com Cartão</p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
           <div className={`px-3 py-1.5 rounded-lg border flex items-center gap-2 ${bridgeStatus === 'online' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
             <div className={`h-1.5 w-1.5 rounded-full ${bridgeStatus === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></div>
-            <span className="text-[9px] font-black uppercase">{bridgeStatus === 'online' ? 'Bridge Ativo' : 'Bridge Offline'}</span>
+            <span className="text-[9px] font-black uppercase">{bridgeStatus === 'online' ? 'Agente Conectado' : 'Agente Offline'}</span>
           </div>
           <button onClick={() => setShowConfig(!showConfig)} className={`p-2 rounded-lg ${showConfig ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}><Settings size={18} /></button>
-          <button onClick={exportToCSV} className="bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-lg text-[10px] font-black uppercase flex items-center gap-2"><FileSpreadsheet size={16} /> Exportar</button>
+          <button onClick={exportToCSV} className="bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-lg text-[10px] font-black uppercase flex items-center gap-2 shadow-lg shadow-emerald-900/20"><FileSpreadsheet size={16} /> Exportar CSV</button>
         </div>
       </header>
 
@@ -191,13 +201,13 @@ app.listen(3001, () => console.log('Agente rodando em http://localhost:3001'));`
         {showConfig && (
           <div className="absolute right-6 top-6 w-[450px] max-h-[85vh] overflow-y-auto bg-white border-2 border-slate-200 rounded-2xl shadow-2xl z-40 p-6 animate-in slide-in-from-right-4 duration-200">
              <div className="flex justify-between items-center mb-4 border-b pb-2">
-                <h3 className="text-xs font-black uppercase">Configurações de Conexão</h3>
+                <h3 className="text-xs font-black uppercase">Configuração e Filtros</h3>
                 <button onClick={() => setShowConfig(false)} className="text-slate-400"><XCircle size={18} /></button>
              </div>
 
              <div className="space-y-4">
                 <section>
-                  <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Banco de Dados (.FDB)</label>
+                  <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Caminho do Banco</label>
                   <div className="flex gap-2 bg-slate-50 p-2 rounded border border-slate-200">
                     <span className="text-[10px] font-mono flex-1 truncate">{dbConfig.path}</span>
                     <button onClick={() => fileInputRef.current?.click()} className="text-blue-600 hover:text-blue-800"><FolderOpen size={16} /></button>
@@ -210,33 +220,30 @@ app.listen(3001, () => console.log('Agente rodando em http://localhost:3001'));`
 
                 <section className="bg-slate-900 rounded-xl p-4 text-white">
                   <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2 text-blue-400"><Terminal size={14} /><h4 className="text-[9px] font-black uppercase">Agente bridge.js</h4></div>
-                    <button onClick={copyToClipboard} className="text-[8px] bg-slate-800 px-2 py-1 rounded border border-slate-700 hover:bg-slate-700 flex items-center gap-1"><Copy size={10} /> Copiar</button>
+                    <div className="flex items-center gap-2 text-blue-400"><Terminal size={14} /><h4 className="text-[9px] font-black uppercase">Novo Agente bridge.js</h4></div>
+                    <button onClick={copyToClipboard} className="text-[8px] bg-slate-800 px-2 py-1 rounded border border-slate-700 hover:bg-slate-700 flex items-center gap-1"><Copy size={10} /> Copiar Novo Código</button>
                   </div>
-                  <div className="max-h-32 overflow-y-auto bg-black/30 p-2 rounded border border-white/5">
-                    <pre className="text-[8px] font-mono text-slate-300 leading-tight">{bridgeCode}</pre>
+                  <p className="text-[8px] text-slate-400 mb-2 leading-tight">Atenção: O código abaixo já inclui o filtro SQL para ignorar funcionários sem cartão.</p>
+                  <div className="max-h-32 overflow-y-auto bg-black/30 p-2 rounded border border-white/5 font-mono text-[8px] text-slate-300">
+                    <pre>{bridgeCode}</pre>
                   </div>
-                  <p className="text-[8px] text-slate-500 mt-2 italic">Cole isso em um arquivo .js e rode 'node bridge.js' no terminal.</p>
                 </section>
 
                 <button onClick={handleFetchData} disabled={isConnecting} className="w-full py-3 bg-blue-600 text-white rounded-xl text-xs font-black uppercase flex items-center justify-center gap-2 hover:bg-blue-500 transition-all">
                   {isConnecting ? <RefreshCcw size={16} className="animate-spin" /> : <Zap size={16} />}
-                  Sincronizar Agora
+                  Sincronizar e Filtrar
                 </button>
              </div>
           </div>
         )}
 
         {errorMessage && (
-          <div className="bg-red-50 border-2 border-red-200 p-4 rounded-xl flex items-center justify-between shadow-sm animate-shake">
-             <div className="flex items-center gap-3">
-               <AlertTriangle className="text-red-500" size={20} />
-               <div>
-                 <p className="text-[10px] font-black text-red-900 uppercase">Falha na Rota ou no Banco</p>
-                 <p className="text-[11px] font-bold text-red-700">{errorMessage}</p>
-               </div>
+          <div className="bg-red-50 border-2 border-red-100 p-4 rounded-xl flex items-center gap-3 shadow-sm">
+             <AlertTriangle className="text-red-500" size={20} />
+             <div>
+               <p className="text-[10px] font-black text-red-900 uppercase">Erro na Importação</p>
+               <p className="text-[11px] font-bold text-red-700">{errorMessage}</p>
              </div>
-             <button onClick={() => setShowConfig(true)} className="text-[9px] font-black uppercase text-red-900 underline">Corrigir Rota</button>
           </div>
         )}
 
@@ -244,7 +251,7 @@ app.listen(3001, () => console.log('Agente rodando em http://localhost:3001'));`
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input 
             type="text" 
-            placeholder="Buscar por nome, apelido ou cartão..."
+            placeholder="Pesquisar entre os funcionários filtrados..."
             className="w-full bg-white border-2 border-slate-200 rounded-xl py-4 pl-12 pr-4 text-sm font-bold focus:border-blue-500 outline-none transition-all shadow-sm"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -256,39 +263,57 @@ app.listen(3001, () => console.log('Agente rodando em http://localhost:3001'));`
             <table className="w-full text-left border-collapse min-w-[1000px]">
               <thead className="sticky top-0 bg-slate-50 z-10 border-b border-slate-100">
                 <tr>
-                  <th className="px-6 py-3 text-[9px] font-black uppercase text-slate-400 tracking-widest">Nome</th>
+                  <th className="px-6 py-3 text-[9px] font-black uppercase text-slate-400 tracking-widest">Funcionário</th>
                   <th className="px-6 py-3 text-[9px] font-black uppercase text-slate-400 tracking-widest">Apelido</th>
-                  <th className="px-6 py-3 text-[9px] font-black uppercase text-slate-400 tracking-widest">Cartão 1</th>
-                  <th className="px-6 py-3 text-[9px] font-black uppercase text-slate-400 tracking-widest">Cartão 2</th>
-                  <th className="px-6 py-3 text-[9px] font-black uppercase text-slate-400 tracking-widest">Cartão 3</th>
+                  <th className="px-6 py-3 text-[9px] font-black uppercase text-slate-400 tracking-widest">ID Cartão 1</th>
+                  <th className="px-6 py-3 text-[9px] font-black uppercase text-slate-400 tracking-widest">ID Cartão 2</th>
+                  <th className="px-6 py-3 text-[9px] font-black uppercase text-slate-400 tracking-widest">ID Cartão 3</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {filteredEmployees.map((emp, idx) => (
                   <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
                     <td className="px-6 py-3 text-[11px] font-black text-slate-800 uppercase">{emp.nome}</td>
-                    <td className="px-6 py-3 text-[11px] font-bold text-slate-500">{emp.apelido}</td>
+                    <td className="px-6 py-3 text-[11px] font-bold text-slate-500 uppercase">{emp.apelido}</td>
                     <td className="px-6 py-3">
-                      <span className="inline-flex items-center gap-1.5 bg-blue-50 px-2.5 py-1 rounded-md text-[10px] font-mono font-black text-blue-600 border border-blue-100"><CreditCard size={10} /> {emp.id_cartao_abast || '---'}</span>
+                      <span className="inline-flex items-center gap-1.5 bg-blue-50 px-2.5 py-1 rounded-md text-[10px] font-mono font-black text-blue-600 border border-blue-100">
+                        <CreditCard size={10} /> {emp.id_cartao_abast || '---'}
+                      </span>
                     </td>
                     <td className="px-6 py-3">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-mono font-black border ${emp.id_cartao_abast_2 ? 'bg-slate-50 text-slate-600 border-slate-200' : 'bg-transparent text-slate-200 border-transparent'}`}><CreditCard size={10} /> {emp.id_cartao_abast_2 || '---'}</span>
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-mono font-black border ${emp.id_cartao_abast_2 ? 'bg-slate-50 text-slate-600 border-slate-200' : 'bg-transparent text-slate-200 border-transparent'}`}>
+                        <CreditCard size={10} /> {emp.id_cartao_abast_2 || '---'}
+                      </span>
                     </td>
                     <td className="px-6 py-3">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-mono font-black border ${emp.id_cartao_abast_3 ? 'bg-slate-50 text-slate-600 border-slate-200' : 'bg-transparent text-slate-200 border-transparent'}`}><CreditCard size={10} /> {emp.id_cartao_abast_3 || '---'}</span>
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-mono font-black border ${emp.id_cartao_abast_3 ? 'bg-slate-50 text-slate-600 border-slate-200' : 'bg-transparent text-slate-200 border-transparent'}`}>
+                        <CreditCard size={10} /> {emp.id_cartao_abast_3 || '---'}
+                      </span>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+
+            {filteredEmployees.length === 0 && !isConnecting && (
+              <div className="p-20 text-center flex flex-col items-center">
+                <div className="p-4 bg-slate-50 rounded-full mb-4">
+                  <CreditCard size={40} className="text-slate-200" />
+                </div>
+                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Nenhum funcionário com cartão encontrado</h4>
+              </div>
+            )}
           </div>
 
           <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 flex items-center justify-between text-[9px] font-black uppercase text-slate-400">
              <div className="flex gap-4">
-               <span>Registros: <strong className="text-slate-700">{employees.length}</strong></span>
-               <span>Filtrados: <strong className="text-blue-600">{filteredEmployees.length}</strong></span>
+               <span>Total Importado: <strong className="text-slate-700">{employees.length}</strong></span>
+               <span>Visualizando: <strong className="text-blue-600">{filteredEmployees.length}</strong></span>
              </div>
-             <div className="flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${dbConfig.status === 'connected' ? 'bg-emerald-500' : 'bg-slate-300'}`}></div> {dbConfig.status}</div>
+             <div className="flex items-center gap-2">
+               <div className={`w-2 h-2 rounded-full ${dbConfig.status === 'connected' ? 'bg-emerald-500' : 'bg-slate-300'}`}></div> 
+               Filtro Ativo: Algum Cartão Preenchido
+             </div>
           </div>
         </div>
       </div>
