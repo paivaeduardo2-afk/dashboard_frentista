@@ -151,11 +151,12 @@ export default function App() {
       const end = new Date(endDate + 'T23:59:59');
       const matchesDate = itemDate >= start && itemDate <= end;
 
-      const searchLower = searchTerm.toLowerCase();
+      const searchLower = (searchTerm || '').toLowerCase();
+      // Proteção contra nulidade nos campos do item
       const matchesSearch = 
-        item.apelido.toLowerCase().includes(searchLower) ||
-        item.tipo_combustivel.toLowerCase().includes(searchLower) ||
-        item.cod_bico.toLowerCase().includes(searchLower);
+        (item.apelido || "").toLowerCase().includes(searchLower) ||
+        (item.tipo_combustivel || "").toLowerCase().includes(searchLower) ||
+        (item.cod_bico || "").toLowerCase().includes(searchLower);
 
       return matchesDate && matchesSearch;
     });
@@ -222,8 +223,9 @@ export default function App() {
 
   const getSortedSales = (sales: JoinData[]) => {
     return [...sales].sort((a, b) => {
-      let valA = a[detailSort.field];
-      let valB = b[detailSort.field];
+      // Proteção de nulidade na ordenação
+      let valA = a[detailSort.field] ?? "";
+      let valB = b[detailSort.field] ?? "";
       
       if (typeof valA === 'string') valA = valA.toLowerCase();
       if (typeof valB === 'string') valB = valB.toLowerCase();
@@ -439,9 +441,9 @@ export default function App() {
                                         <td className="px-6 py-3 text-[10px] font-bold text-slate-400">
                                           {parseFirebirdDate(sale.dt_caixa)?.toLocaleDateString('pt-BR')}
                                         </td>
-                                        <td className="px-6 py-3 text-right font-mono text-[10px] text-slate-500">{sale.preco.toFixed(3)}</td>
-                                        <td className="px-6 py-3 text-right font-mono text-[10px] font-bold text-slate-600">{sale.litros.toFixed(2)}</td>
-                                        <td className="px-6 py-3 text-right text-xs font-black text-emerald-600">R$ {sale.total.toFixed(2)}</td>
+                                        <td className="px-6 py-3 text-right font-mono text-[10px] text-slate-500">{(sale.preco || 0).toFixed(3)}</td>
+                                        <td className="px-6 py-3 text-right font-mono text-[10px] font-bold text-slate-600">{(sale.litros || 0).toFixed(2)}</td>
+                                        <td className="px-6 py-3 text-right text-xs font-black text-emerald-600">R$ {(sale.total || 0).toFixed(2)}</td>
                                       </tr>
                                     ))}
                                   </tbody>
