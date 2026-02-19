@@ -18,7 +18,8 @@ import {
   ChevronDown,
   ChevronRight,
   ArrowUpDown,
-  User
+  User,
+  Calendar
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -60,11 +61,8 @@ export default function App() {
     status: 'disconnected'
   });
 
-  const [startDate, setStartDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 20); 
-    return d.toISOString().split('T')[0];
-  });
+  // Alterado para capturar todo o histórico por padrão (desde o ano 2000)
+  const [startDate, setStartDate] = useState('2000-01-01');
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
 
   const checkBridge = async () => {
@@ -145,14 +143,13 @@ export default function App() {
   const filteredData = useMemo(() => {
     return data.filter(item => {
       const itemDate = parseFirebirdDate(item.dt_caixa);
-      if (!itemDate) return false;
+      if (!itemDate) return true; // Se não tem data, mantém (para garantir que não suma nada por erro de data)
       
       const start = new Date(startDate + 'T00:00:00');
       const end = new Date(endDate + 'T23:59:59');
       const matchesDate = itemDate >= start && itemDate <= end;
 
       const searchLower = (searchTerm || '').toLowerCase();
-      // Proteção contra nulidade nos campos do item
       const matchesSearch = 
         (item.apelido || "").toLowerCase().includes(searchLower) ||
         (item.tipo_combustivel || "").toLowerCase().includes(searchLower) ||
@@ -223,7 +220,6 @@ export default function App() {
 
   const getSortedSales = (sales: JoinData[]) => {
     return [...sales].sort((a, b) => {
-      // Proteção de nulidade na ordenação
       let valA = a[detailSort.field] ?? "";
       let valB = b[detailSort.field] ?? "";
       
@@ -279,14 +275,14 @@ export default function App() {
         <header className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white/80 px-8 py-4 backdrop-blur-md">
           <div className="flex flex-col">
             <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">
-              {activeTab === 'dashboard' ? 'Painel de Gestão' : activeTab === 'history' ? 'Transações por Frentista' : 'Conexão Firebird'}
+              {activeTab === 'dashboard' ? 'Painel de Gestão' : activeTab === 'history' ? 'Histórico Geral' : 'Conexão Firebird'}
             </h2>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-black text-blue-600 uppercase">
-                <Database size={10} /> {data.length} Total
+                <Database size={10} /> {data.length} Total do Banco
               </span>
               <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-black text-emerald-600 uppercase">
-                <Info size={10} /> {filteredData.length} no Período
+                <Info size={10} /> {filteredData.length} Exibidas
               </span>
             </div>
           </div>
@@ -301,6 +297,13 @@ export default function App() {
                   <span className="text-[9px] font-black text-slate-400 uppercase">Fim</span>
                   <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="text-[10px] font-black text-blue-600 outline-none" />
                 </div>
+                <button 
+                  onClick={() => { setStartDate('2000-01-01'); setEndDate(new Date().toISOString().split('T')[0]); }}
+                  className="ml-2 rounded-lg bg-slate-100 p-1.5 text-slate-500 hover:bg-slate-200 transition-colors"
+                  title="Limpar Filtro de Data"
+                >
+                  <Calendar size={14} />
+                </button>
              </div>
           </div>
         </header>
@@ -309,15 +312,15 @@ export default function App() {
           {activeTab === 'dashboard' && filteredData.length > 0 && (
             <>
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                <MetricCard title="Vendas Totais" value={`R$ ${stats.totalRevenue.toLocaleString()}`} icon={<TrendingUp />} color="blue" />
-                <MetricCard title="Volume (Litros)" value={`${stats.totalLiters.toFixed(2)} L`} icon={<Fuel />} color="emerald" />
+                <MetricCard title="Vendas Históricas" value={`R$ ${stats.totalRevenue.toLocaleString()}`} icon={<TrendingUp />} color="blue" />
+                <MetricCard title="Volume Total" value={`${stats.totalLiters.toFixed(2)} L`} icon={<Fuel />} color="emerald" />
                 <MetricCard title="Ticket Médio" value={`R$ ${stats.avgPrice.toFixed(2)}`} icon={<ArrowUpRight />} color="amber" />
-                <MetricCard title="Abastecimentos" value={stats.fuelingCount} icon={<RefreshCcw />} color="indigo" />
+                <MetricCard title="Total Registros" value={stats.fuelingCount} icon={<RefreshCcw />} color="indigo" />
               </div>
 
               <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
                 <div className="rounded-[2.5rem] border border-slate-100 bg-white p-8 shadow-sm h-[400px]">
-                  <h3 className="mb-6 text-lg font-black text-slate-800 uppercase tracking-tighter">Ranking de Vendas</h3>
+                  <h3 className="mb-6 text-lg font-black text-slate-800 uppercase tracking-tighter">Ranking Acumulado</h3>
                   <div className="h-64">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={chartDataByFrentista} layout="vertical">
@@ -332,7 +335,7 @@ export default function App() {
                 </div>
 
                 <div className="rounded-[2.5rem] border border-slate-100 bg-white p-8 shadow-sm h-[400px]">
-                  <h3 className="mb-6 text-lg font-black text-slate-800 uppercase tracking-tighter">Vendas por Combustível</h3>
+                  <h3 className="mb-6 text-lg font-black text-slate-800 uppercase tracking-tighter">Mix de Combustíveis</h3>
                   <div className="h-64">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
@@ -356,14 +359,14 @@ export default function App() {
                    <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                    <input 
                     type="text" 
-                    placeholder="Pesquisar por Frentista, Bico ou Combustível..." 
+                    placeholder="Pesquisar em todo o histórico..." 
                     className="w-full rounded-2xl border-none bg-slate-50 py-3 pl-12 pr-4 text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-blue-500"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                    />
                 </div>
                 <button className="hidden sm:flex items-center gap-2 rounded-2xl bg-blue-50 px-6 py-3 text-xs font-black uppercase text-blue-600 hover:bg-blue-100 transition-colors">
-                  <Download size={16} /> Exportar Relatório
+                  <Download size={16} /> Exportar Backup
                 </button>
               </div>
 
@@ -408,18 +411,8 @@ export default function App() {
                                 <div className="flex items-center justify-between bg-blue-50/30 px-6 py-3 border-b border-blue-100">
                                   <h4 className="text-[10px] font-black uppercase text-blue-800">Detalhamento Individual: {group.name}</h4>
                                   <div className="flex gap-4">
-                                    <button 
-                                      onClick={() => toggleSort('cod_bico')}
-                                      className={`flex items-center gap-1 text-[9px] font-black uppercase ${detailSort.field === 'cod_bico' ? 'text-blue-600' : 'text-slate-400'}`}
-                                    >
-                                      Bico <ArrowUpDown size={12} />
-                                    </button>
-                                    <button 
-                                      onClick={() => toggleSort('total')}
-                                      className={`flex items-center gap-1 text-[9px] font-black uppercase ${detailSort.field === 'total' ? 'text-blue-600' : 'text-slate-400'}`}
-                                    >
-                                      Valor <ArrowUpDown size={12} />
-                                    </button>
+                                    <button onClick={() => toggleSort('cod_bico')} className={`flex items-center gap-1 text-[9px] font-black uppercase ${detailSort.field === 'cod_bico' ? 'text-blue-600' : 'text-slate-400'}`}>Bico <ArrowUpDown size={12} /></button>
+                                    <button onClick={() => toggleSort('total')} className={`flex items-center gap-1 text-[9px] font-black uppercase ${detailSort.field === 'total' ? 'text-blue-600' : 'text-slate-400'}`}>Valor <ArrowUpDown size={12} /></button>
                                   </div>
                                 </div>
                                 <table className="w-full text-left">
@@ -438,9 +431,7 @@ export default function App() {
                                       <tr key={idx} className="hover:bg-slate-50 transition-colors">
                                         <td className="px-6 py-3 font-mono text-[10px] font-black text-slate-400">{sale.cod_bico}</td>
                                         <td className="px-6 py-3"><span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 uppercase">{sale.tipo_combustivel}</span></td>
-                                        <td className="px-6 py-3 text-[10px] font-bold text-slate-400">
-                                          {parseFirebirdDate(sale.dt_caixa)?.toLocaleDateString('pt-BR')}
-                                        </td>
+                                        <td className="px-6 py-3 text-[10px] font-bold text-slate-400">{parseFirebirdDate(sale.dt_caixa)?.toLocaleDateString('pt-BR')}</td>
                                         <td className="px-6 py-3 text-right font-mono text-[10px] text-slate-500">{(sale.preco || 0).toFixed(3)}</td>
                                         <td className="px-6 py-3 text-right font-mono text-[10px] font-bold text-slate-600">{(sale.litros || 0).toFixed(2)}</td>
                                         <td className="px-6 py-3 text-right text-xs font-black text-emerald-600">R$ {(sale.total || 0).toFixed(2)}</td>
@@ -456,11 +447,6 @@ export default function App() {
                     ))}
                   </tbody>
                 </table>
-                {groupedByAttendant.length === 0 && (
-                  <div className="p-12 text-center">
-                    <p className="text-sm font-black text-slate-400 uppercase tracking-widest">Nenhuma venda encontrada para os filtros aplicados</p>
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -481,10 +467,7 @@ export default function App() {
                 {errorMessage && (
                    <div className="mb-6 rounded-2xl bg-red-50 border border-red-100 p-6 flex items-start gap-3 text-red-600">
                       <XCircle size={20} className="shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-xs font-black uppercase mb-1">Erro Detectado</p>
-                        <p className="text-[11px] font-bold leading-relaxed">{errorMessage}</p>
-                      </div>
+                      <div><p className="text-xs font-black uppercase mb-1">Erro Detectado</p><p className="text-[11px] font-bold leading-relaxed">{errorMessage}</p></div>
                    </div>
                 )}
 
@@ -493,50 +476,29 @@ export default function App() {
                     <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Caminho do Banco Ativo</p>
                     <p className="text-xs font-mono font-bold text-slate-700 break-all">{dbConfig.path}</p>
                   </div>
-
-                  <div className="hidden">
-                    <input type="file" ref={fileInputRef} accept=".fdb" onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if(f) setDbConfig({...dbConfig, path: `C:\\ACS\\sintese\\pdv\\${f.name}`});
-                    }} />
-                  </div>
-
+                  <div className="hidden"><input type="file" ref={fileInputRef} accept=".fdb" onChange={(e) => { const f = e.target.files?.[0]; if(f) setDbConfig({...dbConfig, path: `C:\\ACS\\sintese\\pdv\\${f.name}`}); }} /></div>
                   <div className="flex gap-4">
-                    <button 
-                      onClick={() => fileInputRef.current?.click()}
-                      className="flex items-center justify-center gap-3 rounded-3xl bg-slate-100 px-6 py-5 text-sm font-black uppercase tracking-widest text-slate-600 border border-slate-200 hover:bg-slate-200 transition-all"
-                    >
-                      <FolderOpen size={20} /> Mudar Banco
-                    </button>
-                    <button 
-                      onClick={handleConnect}
-                      disabled={isConnecting}
-                      className="flex-1 flex items-center justify-center gap-3 rounded-3xl bg-blue-600 py-5 text-sm font-black uppercase tracking-widest text-white shadow-xl hover:bg-blue-500 transition-all disabled:opacity-50"
-                    >
-                      {isConnecting ? <RefreshCcw size={20} className="animate-spin" /> : <Zap size={20} />}
-                      {isConnecting ? 'Sincronizando...' : 'Conectar Agora'}
-                    </button>
+                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center justify-center gap-3 rounded-3xl bg-slate-100 px-6 py-5 text-sm font-black uppercase tracking-widest text-slate-600 border border-slate-200 hover:bg-slate-200 transition-all"><FolderOpen size={20} /> Mudar Banco</button>
+                    <button onClick={handleConnect} disabled={isConnecting} className="flex-1 flex items-center justify-center gap-3 rounded-3xl bg-blue-600 py-5 text-sm font-black uppercase tracking-widest text-white shadow-xl hover:bg-blue-500 transition-all disabled:opacity-50">{isConnecting ? <RefreshCcw size={20} className="animate-spin" /> : <Zap size={20} />}{isConnecting ? 'Sincronizando...' : 'Conectar Agora'}</button>
                   </div>
                 </div>
               </div>
 
               <div className="rounded-[2.5rem] border border-slate-200 bg-slate-900 p-10 text-white shadow-sm relative overflow-hidden">
                 <div className="relative z-10">
-                  <h3 className="text-xl font-black mb-6 uppercase text-blue-400 tracking-tighter">Diretório ACS Sintese Ativo</h3>
-                  
+                  <h3 className="text-xl font-black mb-6 uppercase text-blue-400 tracking-tighter">Modo de Captura Total</h3>
                   <div className="space-y-6">
-                    <Step num="1" title="Caminho do PDV" desc="O sistema está configurado para buscar em C:\ACS\sintese\pdv\." />
-                    <Step num="2" title="Arquivo de Dados" desc="O nome padrão esperado é CAIXA.FDB." />
-                    <Step num="3" title="Permissões de Rede" desc="Certifique-se que o Agente bridge.js tem acesso total a esta pasta." />
+                    <Step num="1" title="Histórico Completo" desc="O sistema agora exibe todas as vendas encontradas no banco sem limite de dias." />
+                    <Step num="2" title="Query de Sincronização" desc="Recomenda-se remover filtros de data no bridge.js para importar tudo." />
+                    <Step num="3" title="Desempenho" desc="Vendas antigas são processadas localmente para manter a rapidez." />
                   </div>
-
                   <div className="mt-10 p-6 rounded-2xl bg-slate-800 border border-slate-700">
-                    <p className="text-[10px] font-black text-emerald-400 uppercase mb-3 font-mono">Query Recomendada:</p>
+                    <p className="text-[10px] font-black text-emerald-400 uppercase mb-3 font-mono">Query para Todas as Vendas:</p>
                     <code className="text-[11px] font-mono text-slate-300 block bg-black/40 p-4 rounded-xl leading-relaxed whitespace-pre">
                       {"SELECT a.*, f.apelido"} <br/>
                       {"FROM ABASTECIMENTOS a"} <br/>
                       {"LEFT JOIN FUNCIONARIOS f ON a.id_cartao_frentista = f.id_cartao_abast"} <br/>
-                      {"WHERE a.dt_caixa >= 'now' - 20"}
+                      {"ORDER BY a.dt_caixa DESC"}
                     </code>
                   </div>
                 </div>
@@ -571,14 +533,10 @@ function SidebarLink({ active, onClick, icon, label }: { active: boolean, onClic
 }
 
 function MetricCard({ title, value, icon, color }: { title: string, value: string | number, icon: React.ReactNode, color: string }) {
-  const colorMap: Record<string, string> = {
-    blue: 'bg-blue-600', emerald: 'bg-emerald-600', amber: 'bg-amber-600', indigo: 'bg-indigo-600'
-  };
+  const colorMap: Record<string, string> = { blue: 'bg-blue-600', emerald: 'bg-emerald-600', amber: 'bg-amber-600', indigo: 'bg-indigo-600' };
   return (
     <div className="rounded-[2.5rem] border border-slate-100 bg-white p-8 shadow-sm hover:shadow-xl transition-all group">
-      <div className={`mb-6 flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-lg group-hover:scale-110 transition-transform ${colorMap[color]}`}>
-        {icon}
-      </div>
+      <div className={`mb-6 flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-lg group-hover:scale-110 transition-transform ${colorMap[color]}`}>{icon}</div>
       <h4 className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">{title}</h4>
       <p className="text-2xl font-black tracking-tighter text-slate-800">{value}</p>
     </div>
